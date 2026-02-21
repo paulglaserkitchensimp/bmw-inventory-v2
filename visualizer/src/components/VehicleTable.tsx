@@ -1,0 +1,249 @@
+import { useState, useRef } from 'react'
+import type { Vehicle } from '../types'
+import type { AnnotationMap, Tag } from '../hooks/useAnnotations'
+import { TAG_META, nextTag } from '../hooks/useAnnotations'
+
+type SortKey = 'odometer' | 'daysOnLot' | 'internetPrice' | 'year' | 'dealerState'
+type SortDir = 'asc' | 'desc'
+
+const BADGE_COLORS: Record<string, string> = {
+  '1own_great_black': 'bg-green-100 text-green-800',
+  '1own_good_black':  'bg-green-100 text-green-800',
+  '1own_black':       'bg-blue-100 text-blue-800',
+  '1own_fair_black':  'bg-yellow-100 text-yellow-800',
+  '1own':             'bg-blue-100 text-blue-800',
+  'noaccident':       'bg-green-100 text-green-800',
+}
+
+function badgeClass(slug: string | null) {
+  if (!slug) return ''
+  return BADGE_COLORS[slug] ?? 'bg-gray-100 text-gray-700'
+}
+
+function ownerLabel(v: Vehicle) {
+  if (v.ownerCount === 1) return '1 owner'
+  if (v.ownerCount && v.ownerCount > 1) return `${v.ownerCount} owners`
+  return '—'
+}
+
+function SortHeader({ label, col, sort, onSort }: {
+  label: string; col: SortKey
+  sort: { key: SortKey; dir: SortDir }
+  onSort: (k: SortKey) => void
+}) {
+  const active = sort.key === col
+  return (
+    <th
+      onClick={() => onSort(col)}
+      className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase cursor-pointer select-none hover:text-gray-800 whitespace-nowrap"
+    >
+      {label}
+      {active && (
+        <span className="ml-1 text-blue-500">{sort.dir === 'asc' ? '↑' : '↓'}</span>
+      )}
+    </th>
+  )
+}
+
+// Tag pill — click cycles through statuses
+function TagPill({ vin, tag, onCycle }: { vin: string; tag: Tag | null; onCycle: (vin: string) => void }) {
+  if (!tag) {
+    return (
+      <button
+        onClick={e => { e.stopPropagation(); onCycle(vin) }}
+        title="Click to tag"
+        className="text-xs px-1.5 py-0.5 rounded border border-dashed border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-600 transition-colors whitespace-nowrap"
+      >
+        + tag
+      </button>
+    )
+  }
+  const meta = TAG_META[tag]
+  return (
+    <button
+      onClick={e => { e.stopPropagation(); onCycle(vin) }}
+      title={`Click to cycle tag (current: ${meta.label})`}
+      className={`text-xs px-1.5 py-0.5 rounded border font-medium transition-colors whitespace-nowrap ${meta.bg} ${meta.color}`}
+    >
+      {meta.label}
+    </button>
+  )
+}
+
+// Inline comment cell — click to edit, blur/enter to save
+function CommentCell({ vin, comment, onChange }: {
+  vin: string
+  comment: string
+  onChange: (vin: string, val: string) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(comment)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  function startEdit(e: React.MouseEvent) {
+    e.stopPropagation()
+    setDraft(comment)
+    setEditing(true)
+    setTimeout(() => inputRef.current?.focus(), 0)
+  }
+
+  function commit() {
+    setEditing(false)
+    onChange(vin, draft.trim())
+  }
+
+  function handleKey(e: React.KeyboardEvent) {
+    if (e.key === 'Enter') commit()
+    if (e.key === 'Escape') { setDraft(comment); setEditing(false) }
+  }
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={handleKey}
+        onClick={e => e.stopPropagation()}
+        placeholder="Add note…"
+        className="w-full min-w-[120px] text-xs border border-blue-400 rounded px-1.5 py-0.5 outline-none bg-white"
+      />
+    )
+  }
+
+  return (
+    <span
+      onClick={startEdit}
+      title="Click to edit note"
+      className={`text-xs cursor-text rounded px-1 py-0.5 hover:bg-gray-100 transition-colors inline-block min-w-[48px] ${
+        comment ? 'text-gray-700' : 'text-gray-300 italic'
+      }`}
+    >
+      {comment || 'note…'}
+    </span>
+  )
+}
+
+interface Props {
+  vehicles: Vehicle[]
+  onSelect: (v: Vehicle) => void
+  selected: Vehicle | null
+  annotations: AnnotationMap
+  onCycleTag: (vin: string) => void
+  onSetComment: (vin: string, comment: string) => void
+}
+
+export default function VehicleTable({
+  vehicles, onSelect, selected, annotations, onCycleTag, onSetComment,
+}: Props) {
+  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: 'odometer', dir: 'asc' })
+
+  function toggleSort(key: SortKey) {
+    setSort(prev => prev.key === key
+      ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+      : { key, dir: 'asc' })
+  }
+
+  const sorted = [...vehicles].sort((a, b) => {
+    const va = a[sort.key] ?? (sort.dir === 'asc' ? Infinity : -Infinity)
+    const vb = b[sort.key] ?? (sort.dir === 'asc' ? Infinity : -Infinity)
+    if (va < vb) return sort.dir === 'asc' ? -1 : 1
+    if (va > vb) return sort.dir === 'asc' ? 1 : -1
+    return 0
+  })
+
+  return (
+    <div className="overflow-auto flex-1">
+      <table className="w-full text-sm border-collapse">
+        <thead className="bg-gray-50 sticky top-0 z-10">
+          <tr>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">Tag</th>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">Note</th>
+            <SortHeader label="Year" col="year" sort={sort} onSort={toggleSort} />
+            <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">Trim</th>
+            <SortHeader label="Miles" col="odometer" sort={sort} onSort={toggleSort} />
+            <SortHeader label="Days" col="daysOnLot" sort={sort} onSort={toggleSort} />
+            <SortHeader label="Price" col="internetPrice" sort={sort} onSort={toggleSort} />
+            <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Color</th>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Owners</th>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Dealer</th>
+            <SortHeader label="State" col="dealerState" sort={sort} onSort={toggleSort} />
+            <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Links</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map(v => {
+            const ann = annotations[v.vin]
+            const tag = ann?.tag ?? null
+            const comment = ann?.comment ?? ''
+            const isSelected = selected?.vin === v.vin
+            return (
+              <tr
+                key={v.vin}
+                onClick={() => onSelect(v)}
+                className={`border-b border-gray-100 cursor-pointer transition-colors ${
+                  isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'
+                }`}
+              >
+                <td className="px-3 py-2">
+                  <TagPill vin={v.vin} tag={tag} onCycle={onCycleTag} />
+                </td>
+                <td className="px-3 py-2 max-w-[180px]">
+                  <CommentCell vin={v.vin} comment={comment} onChange={onSetComment} />
+                </td>
+                <td className="px-3 py-2 font-medium">{v.year}</td>
+                <td className="px-3 py-2 whitespace-nowrap">
+                  <span className={`text-xs px-1.5 py-0.5 rounded ${v.certified ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-600'}`}>
+                    {v.trim ?? '—'}
+                    {v.certified && ' ★'}
+                  </span>
+                </td>
+                <td className="px-3 py-2 tabular-nums">
+                  {v.odometer !== null ? v.odometer.toLocaleString() : 'new'}
+                </td>
+                <td className="px-3 py-2 tabular-nums">
+                  {v.daysOnLot !== null ? (
+                    <span className={v.daysOnLot > 180 ? 'text-orange-600 font-medium' : ''}>
+                      {v.daysOnLot}d
+                    </span>
+                  ) : '—'}
+                </td>
+                <td className="px-3 py-2 tabular-nums">
+                  {v.internetPrice ? `$${v.internetPrice.toLocaleString()}` : '—'}
+                </td>
+                <td className="px-3 py-2 text-gray-600 max-w-[140px] truncate">{v.extColor ?? '—'}</td>
+                <td className="px-3 py-2">
+                  {v.carfaxBadge ? (
+                    <span className={`text-xs px-1.5 py-0.5 rounded ${badgeClass(v.carfaxBadge)}`}>
+                      {ownerLabel(v)}
+                    </span>
+                  ) : <span className="text-gray-400">—</span>}
+                </td>
+                <td className="px-3 py-2 max-w-[160px] truncate text-gray-700">{v.dealerName ?? '—'}</td>
+                <td className="px-3 py-2">{v.dealerState ?? '—'}</td>
+                <td className="px-3 py-2 whitespace-nowrap">
+                  <div className="flex gap-2">
+                    {(v.resolvedLink || v.link) && (
+                      <a href={v.resolvedLink ?? v.link ?? ''} target="_blank" rel="noreferrer"
+                        onClick={e => e.stopPropagation()}
+                        className="text-blue-600 hover:underline text-xs">VDP</a>
+                    )}
+                    {v.carfaxUrl && (
+                      <a href={v.carfaxUrl} target="_blank" rel="noreferrer"
+                        onClick={e => e.stopPropagation()}
+                        className="text-green-600 hover:underline text-xs">CarFax</a>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+      {sorted.length === 0 && (
+        <div className="p-8 text-center text-gray-400">No vehicles match the current filters.</div>
+      )}
+    </div>
+  )
+}

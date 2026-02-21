@@ -1,0 +1,847 @@
+[
+  {
+    "dealer_slug": "1cochranhyundaimonroeville",
+    "sbm_code": "0824",
+    "index_base": "1cochranhyundaimonroeville-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "1cochranhyundaisouthhills",
+    "sbm_code": "20824",
+    "index_base": "1cochranhyundaisouthhills-sbm20824_production_inventory"
+  },
+  {
+    "dealer_slug": "advantagechryslerdodgejeepram",
+    "sbm_code": "0925",
+    "index_base": "advantagechryslerdodgejeepram-sbm0925_production_inventory"
+  },
+  {
+    "dealer_slug": "advantagedodgechryslerjeep",
+    "sbm_code": "0725",
+    "index_base": "advantagedodgechryslerjeep-sbm0725_production_inventory"
+  },
+  {
+    "dealer_slug": "alfaromeoofanaheimhills",
+    "sbm_code": "0325",
+    "index_base": "alfaromeoofanaheimhills-sbm0325_production_inventory"
+  },
+  {
+    "dealer_slug": "alfaromeoofcorpuschristi",
+    "sbm_code": "0325",
+    "index_base": "alfaromeoofcorpuschristi-sbm0325_production_inventory"
+  },
+  {
+    "dealer_slug": "alfaromeoofminneapolis",
+    "sbm_code": "0225",
+    "index_base": "alfaromeoofminneapolis-sbm0225_production_inventory"
+  },
+  {
+    "dealer_slug": "alfaromeoofnaples",
+    "sbm_code": "0225",
+    "index_base": "alfaromeoofnaples-sbm0225_production_inventory"
+  },
+  {
+    "dealer_slug": "alfaromeoofseattle",
+    "sbm_code": "0225",
+    "index_base": "alfaromeoofseattle-sbm0225_production_inventory"
+  },
+  {
+    "dealer_slug": "allenturnergenesis",
+    "sbm_code": "0724",
+    "index_base": "allenturnergenesis-sbm0724_production_inventory"
+  },
+  {
+    "dealer_slug": "arrigoalfaromeoofwestpalm",
+    "sbm_code": "0325",
+    "index_base": "arrigoalfaromeoofwestpalm-sbm0325_production_inventory"
+  },
+  {
+    "dealer_slug": "autocentrochryslerdodgejeepram",
+    "sbm_code": "1125",
+    "index_base": "autocentrochryslerdodgejeepram-sbm1125_production_inventory"
+  },
+  {
+    "dealer_slug": "autohauslebanon",
+    "sbm_code": "0424",
+    "index_base": "autohauslebanon-sbm0424_production_inventory"
+  },
+  {
+    "dealer_slug": "billvolzswestchester",
+    "sbm_code": "1025",
+    "index_base": "billvolzswestchester-sbm1025_production_inventory"
+  },
+  {
+    "dealer_slug": "billycraftchryslerdodgejeepram",
+    "sbm_code": "1125",
+    "index_base": "billycraftchryslerdodgejeepram-sbm1125_production_inventory"
+  },
+  {
+    "dealer_slug": "bmwofelcajon",
+    "sbm_code": "1124",
+    "index_base": "bmwofelcajon-sbm1124_production_inventory"
+  },
+  {
+    "dealer_slug": "bmwoffortlauderdale",
+    "sbm_code": "0325",
+    "index_base": "bmwoffortlauderdale-sbm0325_production_inventory"
+  },
+  {
+    "dealer_slug": "bmwofjackson",
+    "sbm_code": "0125",
+    "index_base": "bmwofjackson-sbm0125_production_inventory"
+  },
+  {
+    "dealer_slug": "bmwofmountlaurel",
+    "sbm_code": "0325",
+    "index_base": "bmwofmountlaurel-sbm0325_production_inventory"
+  },
+  {
+    "dealer_slug": "bmwofschererville",
+    "sbm_code": "0125",
+    "index_base": "bmwofschererville-sbm0125_production_inventory"
+  },
+  {
+    "dealer_slug": "bmwofwesleychapel",
+    "sbm_code": "0125",
+    "index_base": "bmwofwesleychapel-sbm0125_production_inventory"
+  },
+  {
+    "dealer_slug": "bobbellhyundai",
+    "sbm_code": "0824",
+    "index_base": "bobbellhyundai-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "boggustiptonchryslerdodgejeepram",
+    "sbm_code": "0126",
+    "index_base": "boggustiptonchryslerdodgejeepram-sbm0126_production_inventory"
+  },
+  {
+    "dealer_slug": "bosaktoyota",
+    "sbm_code": "0624",
+    "index_base": "bosaktoyota-sbm0624_production_inventory"
+  },
+  {
+    "dealer_slug": "brandonhyundai",
+    "sbm_code": "0824",
+    "index_base": "brandonhyundai-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "brightonchryslerdodgejeepram",
+    "sbm_code": "1125",
+    "index_base": "brightonchryslerdodgejeepram-sbm1125_production_inventory"
+  },
+  {
+    "dealer_slug": "budclarytoyotaofmoseslake",
+    "sbm_code": "0624",
+    "index_base": "budclarytoyotaofmoseslake-sbm0624_production_inventory"
+  },
+  {
+    "dealer_slug": "burnsmotorsltd",
+    "sbm_code": "1025",
+    "index_base": "burnsmotorsltd-sbm1025_production_inventory"
+  },
+  {
+    "dealer_slug": "burnsvilletoyota",
+    "sbm_code": "0624",
+    "index_base": "burnsvilletoyota-sbm0624_production_inventory"
+  },
+  {
+    "dealer_slug": "cdjrofalbertville",
+    "sbm_code": "1125",
+    "index_base": "cdjrofalbertville-sbm1125_production_inventory"
+  },
+  {
+    "dealer_slug": "checkeredflaghyundaiworld",
+    "sbm_code": "0824",
+    "index_base": "checkeredflaghyundaiworld-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "chieflandchryslerdodgejeepram",
+    "sbm_code": "0925",
+    "index_base": "chieflandchryslerdodgejeepram-sbm0925_production_inventory"
+  },
+  {
+    "dealer_slug": "churnessmotorscompany",
+    "sbm_code": "1025",
+    "index_base": "churnessmotorscompany-sbm1025_production_inventory"
+  },
+  {
+    "dealer_slug": "classichyundaiofwilkesboro",
+    "sbm_code": "0824",
+    "index_base": "classichyundaiofwilkesboro-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "classicvolkswagenofgastonia",
+    "sbm_code": "0424",
+    "index_base": "classicvolkswagenofgastonia-sbm0424_production_inventory"
+  },
+  {
+    "dealer_slug": "crafthyundai",
+    "sbm_code": "0824",
+    "index_base": "crafthyundai-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "crossroadshyundaiofloveland",
+    "sbm_code": "0824",
+    "index_base": "crossroadshyundaiofloveland-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "damianlillardtoyota",
+    "sbm_code": "0724",
+    "index_base": "damianlillardtoyota-sbm0724_production_inventory"
+  },
+  {
+    "dealer_slug": "dickhannahhyundaiofportland",
+    "sbm_code": "0724",
+    "index_base": "dickhannahhyundaiofportland-sbm0724_production_inventory"
+  },
+  {
+    "dealer_slug": "donjacobstoyota",
+    "sbm_code": "0624",
+    "index_base": "donjacobstoyota-sbm0624_production_inventory"
+  },
+  {
+    "dealer_slug": "doralhyundai-legacymigration0622",
+    "sbm_code": "0824",
+    "index_base": "doralhyundai-legacymigration0622-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "findlayhyundai",
+    "sbm_code": "0824",
+    "index_base": "findlayhyundai-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "freewaytoyotaofhanford",
+    "sbm_code": "0624",
+    "index_base": "freewaytoyotaofhanford-sbm0624_production_inventory"
+  },
+  {
+    "dealer_slug": "freysingerhyundai",
+    "sbm_code": "30824",
+    "index_base": "freysingerhyundai-sbm30824_production_inventory"
+  },
+  {
+    "dealer_slug": "gainesvillechryslerdodgejeepram",
+    "sbm_code": "0925",
+    "index_base": "gainesvillechryslerdodgejeepram-sbm0925_production_inventory"
+  },
+  {
+    "dealer_slug": "genesisofbayside",
+    "sbm_code": "0824",
+    "index_base": "genesisofbayside-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "genesisofbloomingtonnormal",
+    "sbm_code": "0824",
+    "index_base": "genesisofbloomingtonnormal-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "genesisofcartersville",
+    "sbm_code": "0824",
+    "index_base": "genesisofcartersville-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "genesisofcleveland",
+    "sbm_code": "0824",
+    "index_base": "genesisofcleveland-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "genesisofconcord",
+    "sbm_code": "0824",
+    "index_base": "genesisofconcord-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "genesisofdowntownnashville",
+    "sbm_code": "0724",
+    "index_base": "genesisofdowntownnashville-sbm0724_production_inventory"
+  },
+  {
+    "dealer_slug": "genesisofeasternshore",
+    "sbm_code": "0824",
+    "index_base": "genesisofeasternshore-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "genesisofgolden",
+    "sbm_code": "0824",
+    "index_base": "genesisofgolden-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "genesisofhampton",
+    "sbm_code": "0824",
+    "index_base": "genesisofhampton-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "genesisofharlingen",
+    "sbm_code": "0824",
+    "index_base": "genesisofharlingen-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "genesisofhonolulu",
+    "sbm_code": "0824",
+    "index_base": "genesisofhonolulu-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "genesisofkearnymesa",
+    "sbm_code": "0824",
+    "index_base": "genesisofkearnymesa-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "genesisoflittleton",
+    "sbm_code": "0824",
+    "index_base": "genesisoflittleton-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "genesisofmentor",
+    "sbm_code": "0824",
+    "index_base": "genesisofmentor-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "genesisofmesquite",
+    "sbm_code": "0824",
+    "index_base": "genesisofmesquite-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "genesisofmiamilakes",
+    "sbm_code": "0125",
+    "index_base": "genesisofmiamilakes-sbm0125_production_inventory"
+  },
+  {
+    "dealer_slug": "genesisofmontgomery",
+    "sbm_code": "0724",
+    "index_base": "genesisofmontgomery-sbm0724_production_inventory"
+  },
+  {
+    "dealer_slug": "genesisofnaples",
+    "sbm_code": "0824",
+    "index_base": "genesisofnaples-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "genesisofschaumburg",
+    "sbm_code": "0724",
+    "index_base": "genesisofschaumburg-sbm0724_production_inventory"
+  },
+  {
+    "dealer_slug": "genesisofsouthwesthouston",
+    "sbm_code": "20824",
+    "index_base": "genesisofsouthwesthouston-sbm20824_production_inventory"
+  },
+  {
+    "dealer_slug": "genesisofsouthwestomaha",
+    "sbm_code": "0824",
+    "index_base": "genesisofsouthwestomaha-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "genesisofspringfield",
+    "sbm_code": "0924",
+    "index_base": "genesisofspringfield-sbm0924_production_inventory"
+  },
+  {
+    "dealer_slug": "genesisofvirginiabeach",
+    "sbm_code": "0724",
+    "index_base": "genesisofvirginiabeach-sbm0724_production_inventory"
+  },
+  {
+    "dealer_slug": "genesisofwolfchase",
+    "sbm_code": "0824",
+    "index_base": "genesisofwolfchase-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "glenncdjroflouisville",
+    "sbm_code": "1025",
+    "index_base": "glenncdjroflouisville-sbm1025_production_inventory"
+  },
+  {
+    "dealer_slug": "headquartergenesis",
+    "sbm_code": "0824",
+    "index_base": "headquartergenesis-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "hyundaiofasheville-legacymigration0920",
+    "sbm_code": "0824",
+    "index_base": "hyundaiofasheville-legacymigration0920-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "johnhirschscambridgemotorschryslerjeepdodgeram",
+    "sbm_code": "0725",
+    "index_base": "johnhirschscambridgemotorschryslerjeepdodgeram-sbm0725_production_inventory"
+  },
+  {
+    "dealer_slug": "kearnymesahyundai",
+    "sbm_code": "0824",
+    "index_base": "kearnymesahyundai-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "kellyvolkswagen",
+    "sbm_code": "0724",
+    "index_base": "kellyvolkswagen-sbm0724_production_inventory"
+  },
+  {
+    "dealer_slug": "kendalltoyotaredesign",
+    "sbm_code": "0624",
+    "index_base": "kendalltoyotaredesign-sbm0624_production_inventory"
+  },
+  {
+    "dealer_slug": "kunibmw",
+    "sbm_code": "0325",
+    "index_base": "kunibmw-sbm0325_production_inventory"
+  },
+  {
+    "dealer_slug": "lakesidetoyota",
+    "sbm_code": "0624024",
+    "index_base": "lakesidetoyota-sbm0624024_production_inventory"
+  },
+  {
+    "dealer_slug": "lauderdalebmwofpembrokepines",
+    "sbm_code": "0325",
+    "index_base": "lauderdalebmwofpembrokepines-sbm0325_production_inventory"
+  },
+  {
+    "dealer_slug": "lexusmontereypeninsula",
+    "sbm_code": "1225",
+    "index_base": "lexusmontereypeninsula-sbm1225_production_inventory"
+  },
+  {
+    "dealer_slug": "lutherbloomingtonhyundai",
+    "sbm_code": "0824",
+    "index_base": "lutherbloomingtonhyundai-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "lutherbrookdalevolkswagen",
+    "sbm_code": "0724",
+    "index_base": "lutherbrookdalevolkswagen-sbm0724_production_inventory"
+  },
+  {
+    "dealer_slug": "lutherburnsvillehyundai",
+    "sbm_code": "0824",
+    "index_base": "lutherburnsvillehyundai-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "lutherburnsvillevolkswagen",
+    "sbm_code": "0724",
+    "index_base": "lutherburnsvillevolkswagen-sbm0724_production_inventory"
+  },
+  {
+    "dealer_slug": "luthergenesisofbloomington",
+    "sbm_code": "0824",
+    "index_base": "luthergenesisofbloomington-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "lutherhudsonchryslerdodgejeepram",
+    "sbm_code": "0725",
+    "index_base": "lutherhudsonchryslerdodgejeepram-sbm0725_production_inventory"
+  },
+  {
+    "dealer_slug": "lutherwestsidevolkswagen",
+    "sbm_code": "0724",
+    "index_base": "lutherwestsidevolkswagen-sbm0724_production_inventory"
+  },
+  {
+    "dealer_slug": "lynneshyundai",
+    "sbm_code": "0924",
+    "index_base": "lynneshyundai-sbm0924_production_inventory"
+  },
+  {
+    "dealer_slug": "maseratiofanaheimhills",
+    "sbm_code": "0425",
+    "index_base": "maseratiofanaheimhills-sbm0425_production_inventory"
+  },
+  {
+    "dealer_slug": "maseratioforlando",
+    "sbm_code": "0725",
+    "index_base": "maseratioforlando-sbm0725_production_inventory"
+  },
+  {
+    "dealer_slug": "maseratiofpalmbeach",
+    "sbm_code": "0425",
+    "index_base": "maseratiofpalmbeach-sbm0425_production_inventory"
+  },
+  {
+    "dealer_slug": "meadowlandofcarmel",
+    "sbm_code": "1025",
+    "index_base": "meadowlandofcarmel-sbm1025_production_inventory"
+  },
+  {
+    "dealer_slug": "miraclechryslerdodgejeepram",
+    "sbm_code": "08251",
+    "index_base": "miraclechryslerdodgejeepram-sbm08251_production_inventory"
+  },
+  {
+    "dealer_slug": "modernhyundaiofconcord",
+    "sbm_code": "0824",
+    "index_base": "modernhyundaiofconcord-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "moderntoyota",
+    "sbm_code": "20624",
+    "index_base": "moderntoyota-sbm20624_production_inventory"
+  },
+  {
+    "dealer_slug": "moderntoyotaofboone",
+    "sbm_code": "0624",
+    "index_base": "moderntoyotaofboone-sbm0624_production_inventory"
+  },
+  {
+    "dealer_slug": "motorwerksbmwofbarrington",
+    "sbm_code": "0125",
+    "index_base": "motorwerksbmwofbarrington-sbm0125_production_inventory"
+  },
+  {
+    "dealer_slug": "newcountrybmw",
+    "sbm_code": "1224",
+    "index_base": "newcountrybmw-sbm1224_production_inventory"
+  },
+  {
+    "dealer_slug": "newcountrylexusofgreatneck",
+    "sbm_code": "0126",
+    "index_base": "newcountrylexusofgreatneck-sbm0126_production_inventory"
+  },
+  {
+    "dealer_slug": "newcountrylexusoflatham",
+    "sbm_code": "0126",
+    "index_base": "newcountrylexusoflatham-sbm0126_production_inventory"
+  },
+  {
+    "dealer_slug": "newcountrylexusofwestport",
+    "sbm_code": "0126",
+    "index_base": "newcountrylexusofwestport-sbm0126_production_inventory"
+  },
+  {
+    "dealer_slug": "newcountrytoyota",
+    "sbm_code": "0624",
+    "index_base": "newcountrytoyota-sbm0624_production_inventory"
+  },
+  {
+    "dealer_slug": "newcountrytoyotaofcliftonpark",
+    "sbm_code": "0624",
+    "index_base": "newcountrytoyotaofcliftonpark-sbm0624_production_inventory"
+  },
+  {
+    "dealer_slug": "newcountrytoyotaofwestport",
+    "sbm_code": "0624",
+    "index_base": "newcountrytoyotaofwestport-sbm0624_production_inventory"
+  },
+  {
+    "dealer_slug": "normreevesgenesis",
+    "sbm_code": "0824",
+    "index_base": "normreevesgenesis-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "northhollywoodtoyota",
+    "sbm_code": "0324",
+    "index_base": "northhollywoodtoyota-sbm0324_production_inventory"
+  },
+  {
+    "dealer_slug": "obrienhyundaioffortmyers",
+    "sbm_code": "0824",
+    "index_base": "obrienhyundaioffortmyers-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "oharamotors",
+    "sbm_code": "1025",
+    "index_base": "oharamotors-sbm1025_production_inventory"
+  },
+  {
+    "dealer_slug": "oxmoorgenesis",
+    "sbm_code": "0724",
+    "index_base": "oxmoorgenesis-sbm0724_production_inventory"
+  },
+  {
+    "dealer_slug": "parkschryslerdodgejeep",
+    "sbm_code": "0625",
+    "index_base": "parkschryslerdodgejeep-sbm0625_production_inventory"
+  },
+  {
+    "dealer_slug": "patriotchryslerdodgejeepramofmcalester",
+    "sbm_code": "1125",
+    "index_base": "patriotchryslerdodgejeepramofmcalester-sbm1125_production_inventory"
+  },
+  {
+    "dealer_slug": "perkinsmotors",
+    "sbm_code": "0625",
+    "index_base": "perkinsmotors-sbm0625_production_inventory"
+  },
+  {
+    "dealer_slug": "pinehursthyundai",
+    "sbm_code": "0824",
+    "index_base": "pinehursthyundai-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "porschecliftonpark",
+    "sbm_code": "0424",
+    "index_base": "porschecliftonpark-sbm0424_production_inventory"
+  },
+  {
+    "dealer_slug": "porschegreenwich",
+    "sbm_code": "0424",
+    "index_base": "porschegreenwich-sbm0424_production_inventory"
+  },
+  {
+    "dealer_slug": "porschemechanicsburg",
+    "sbm_code": "0424",
+    "index_base": "porschemechanicsburg-sbm0424_production_inventory"
+  },
+  {
+    "dealer_slug": "porscheofsandiego",
+    "sbm_code": "0424",
+    "index_base": "porscheofsandiego-sbm0424_production_inventory"
+  },
+  {
+    "dealer_slug": "porscheowingsmills",
+    "sbm_code": "0424",
+    "index_base": "porscheowingsmills-sbm0424_production_inventory"
+  },
+  {
+    "dealer_slug": "princetonbmw",
+    "sbm_code": "0325",
+    "index_base": "princetonbmw-sbm0325_production_inventory"
+  },
+  {
+    "dealer_slug": "qualitychryslerdodgejeepramfiat",
+    "sbm_code": "1125",
+    "index_base": "qualitychryslerdodgejeepramfiat-sbm1125_production_inventory"
+  },
+  {
+    "dealer_slug": "qualitykiaofgreenwood",
+    "sbm_code": "0226",
+    "index_base": "qualitykiaofgreenwood-sbm0226_production_inventory"
+  },
+  {
+    "dealer_slug": "redrivertoyota",
+    "sbm_code": "0624",
+    "index_base": "redrivertoyota-sbm0624_production_inventory"
+  },
+  {
+    "dealer_slug": "rogersrogerstoyota",
+    "sbm_code": "0624",
+    "index_base": "rogersrogerstoyota-sbm0624_production_inventory"
+  },
+  {
+    "dealer_slug": "romeovilletoyota",
+    "sbm_code": "0624",
+    "index_base": "romeovilletoyota-sbm0624_production_inventory"
+  },
+  {
+    "dealer_slug": "rontonkingranturismo",
+    "sbm_code": "1225",
+    "index_base": "rontonkingranturismo-sbm1225_production_inventory"
+  },
+  {
+    "dealer_slug": "rosenhyundaigreenfield",
+    "sbm_code": "0724",
+    "index_base": "rosenhyundaigreenfield-sbm0724_production_inventory"
+  },
+  {
+    "dealer_slug": "rudyluthertoyota",
+    "sbm_code": "20624",
+    "index_base": "rudyluthertoyota-sbm20624_production_inventory"
+  },
+  {
+    "dealer_slug": "sandiabmw",
+    "sbm_code": "0125",
+    "index_base": "sandiabmw-sbm0125_production_inventory"
+  },
+  {
+    "dealer_slug": "santafebmw",
+    "sbm_code": "0125",
+    "index_base": "santafebmw-sbm0125_production_inventory"
+  },
+  {
+    "dealer_slug": "sharpebmw",
+    "sbm_code": "0125",
+    "index_base": "sharpebmw-sbm0125_production_inventory"
+  },
+  {
+    "dealer_slug": "shottenkirktexas",
+    "sbm_code": "0625",
+    "index_base": "shottenkirktexas-sbm0625_production_inventory"
+  },
+  {
+    "dealer_slug": "siddillongenesisoflincoln",
+    "sbm_code": "0824",
+    "index_base": "siddillongenesisoflincoln-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "silsbeetoyota",
+    "sbm_code": "0524",
+    "index_base": "silsbeetoyota-sbm0524_production_inventory"
+  },
+  {
+    "dealer_slug": "southhillstoyota",
+    "sbm_code": "0624",
+    "index_base": "southhillstoyota-sbm0624_production_inventory"
+  },
+  {
+    "dealer_slug": "spitzerhyundaicleveland",
+    "sbm_code": "0824",
+    "index_base": "spitzerhyundaicleveland-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "spokanehyundai",
+    "sbm_code": "0824",
+    "index_base": "spokanehyundai-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "stcharlestoyota",
+    "sbm_code": "0624",
+    "index_base": "stcharlestoyota-sbm0624_production_inventory"
+  },
+  {
+    "dealer_slug": "sterlingbmw",
+    "sbm_code": "0125",
+    "index_base": "sterlingbmw-sbm0125_production_inventory"
+  },
+  {
+    "dealer_slug": "sunrisevolkswagenoffortpierce",
+    "sbm_code": "0324",
+    "index_base": "sunrisevolkswagenoffortpierce-sbm0324_production_inventory"
+  },
+  {
+    "dealer_slug": "suntrupgenesis",
+    "sbm_code": "0824",
+    "index_base": "suntrupgenesis-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "swopehyundai",
+    "sbm_code": "0824",
+    "index_base": "swopehyundai-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "thebmwstorecincinnati",
+    "sbm_code": "1224",
+    "index_base": "thebmwstorecincinnati-sbm1224_production_inventory"
+  },
+  {
+    "dealer_slug": "thomasautocenter",
+    "sbm_code": "1125",
+    "index_base": "thomasautocenter-sbm1125_production_inventory"
+  },
+  {
+    "dealer_slug": "tiptonhyundai",
+    "sbm_code": "20824",
+    "index_base": "tiptonhyundai-sbm20824_production_inventory"
+  },
+  {
+    "dealer_slug": "toyotachulavista",
+    "sbm_code": "0524",
+    "index_base": "toyotachulavista-sbm0524_production_inventory"
+  },
+  {
+    "dealer_slug": "toyotaofbellingham",
+    "sbm_code": "0624",
+    "index_base": "toyotaofbellingham-sbm0624_production_inventory"
+  },
+  {
+    "dealer_slug": "toyotaofwhittier",
+    "sbm_code": "0524",
+    "index_base": "toyotaofwhittier-sbm0524_production_inventory"
+  },
+  {
+    "dealer_slug": "tysingerhyundai",
+    "sbm_code": "0824",
+    "index_base": "tysingerhyundai-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "universalhyundai",
+    "sbm_code": "0824",
+    "index_base": "universalhyundai-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "universityvolkswagen1",
+    "sbm_code": "0724",
+    "index_base": "universityvolkswagen1-sbm0724_production_inventory"
+  },
+  {
+    "dealer_slug": "vernonvolkswagen",
+    "sbm_code": "0424",
+    "index_base": "vernonvolkswagen-sbm0424_production_inventory"
+  },
+  {
+    "dealer_slug": "victorytoyotaofcanton",
+    "sbm_code": "0624",
+    "index_base": "victorytoyotaofcanton-sbm0624_production_inventory"
+  },
+  {
+    "dealer_slug": "victorytoyotaofsanbruno",
+    "sbm_code": "0624",
+    "index_base": "victorytoyotaofsanbruno-sbm0624_production_inventory"
+  },
+  {
+    "dealer_slug": "victorytoyotaseaside",
+    "sbm_code": "0624",
+    "index_base": "victorytoyotaseaside-sbm0624_production_inventory"
+  },
+  {
+    "dealer_slug": "visionchryslerdodgejeepramofpenfield",
+    "sbm_code": "0825",
+    "index_base": "visionchryslerdodgejeepramofpenfield-sbm0825_production_inventory"
+  },
+  {
+    "dealer_slug": "volkswagenbrandon",
+    "sbm_code": "0424",
+    "index_base": "volkswagenbrandon-sbm0424_production_inventory"
+  },
+  {
+    "dealer_slug": "volkswagenofmarion",
+    "sbm_code": "0724",
+    "index_base": "volkswagenofmarion-sbm0724_production_inventory"
+  },
+  {
+    "dealer_slug": "walkerbmw",
+    "sbm_code": "0125",
+    "index_base": "walkerbmw-sbm0125_production_inventory"
+  },
+  {
+    "dealer_slug": "walkertoyotalouisiana",
+    "sbm_code": "0624",
+    "index_base": "walkertoyotalouisiana-sbm0624_production_inventory"
+  },
+  {
+    "dealer_slug": "washingtonhyundai",
+    "sbm_code": "0824",
+    "index_base": "washingtonhyundai-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "wernerhyundai",
+    "sbm_code": "0824",
+    "index_base": "wernerhyundai-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "westherrlebruntoyota",
+    "sbm_code": "0624",
+    "index_base": "westherrlebruntoyota-sbm0624_production_inventory"
+  },
+  {
+    "dealer_slug": "westkendalltoyota",
+    "sbm_code": "0624",
+    "index_base": "westkendalltoyota-sbm0624_production_inventory"
+  },
+  {
+    "dealer_slug": "wideworldbmw",
+    "sbm_code": "1224",
+    "index_base": "wideworldbmw-sbm1224_production_inventory"
+  },
+  {
+    "dealer_slug": "woburntoyota",
+    "sbm_code": "0624",
+    "index_base": "woburntoyota-sbm0624_production_inventory"
+  },
+  {
+    "dealer_slug": "wolfchasehyundai",
+    "sbm_code": "0824",
+    "index_base": "wolfchasehyundai-sbm0824_production_inventory"
+  },
+  {
+    "dealer_slug": "woodhousemaseratiofomaha",
+    "sbm_code": "0425",
+    "index_base": "woodhousemaseratiofomaha-sbm0425_production_inventory"
+  },
+  {
+    "dealer_slug": "yellowstonetoyota",
+    "sbm_code": "0624",
+    "index_base": "yellowstonetoyota-sbm0624_production_inventory"
+  },
+  {
+    "dealer_slug": "yorkcdjrautomotiveofplainfield",
+    "sbm_code": "0126",
+    "index_base": "yorkcdjrautomotiveofplainfield-sbm0126_production_inventory"
+  }
+]
