@@ -37,7 +37,7 @@ export default function VehicleDetail({ vehicle: v, onClose, annotations, onSetT
   }
 
   return (
-    <div className="fixed inset-y-0 right-0 w-96 bg-white shadow-xl z-50 flex flex-col border-l border-gray-200">
+    <div className="fixed inset-y-0 right-0 w-96 bg-white shadow-xl z-[1100] flex flex-col border-l border-gray-200">
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
         <div>
           <div className="font-semibold text-gray-900">

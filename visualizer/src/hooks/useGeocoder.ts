@@ -18,18 +18,15 @@ function saveCache(map: GeoMap) {
 }
 
 async function geocode(city: string, state: string): Promise<[number, number] | null> {
-  const q = encodeURIComponent(`${city}, ${state}, USA`)
+  const params = new URLSearchParams({ city, state })
   try {
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1`,
-      { headers: { 'Accept-Language': 'en' } }
-    )
-    const data = await res.json()
-    if (data[0]) return [parseFloat(data[0].lat), parseFloat(data[0].lon)]
+    const res = await fetch(`/api/geocode?${params}`)
+    if (!res.ok) return null
+    const data = await res.json() as { coords: [number, number] | null }
+    return data.coords
   } catch {
-    // ignore
+    return null
   }
-  return null
 }
 
 export function useGeocoder(vehicles: Vehicle[]) {
@@ -53,7 +50,6 @@ export function useGeocoder(vehicles: Vehicle[]) {
         if (cancelled) break
         const coords = await geocode(city, state)
         if (coords) updates[key] = coords
-        await new Promise(r => setTimeout(r, 300))  // rate-limit Nominatim
       }
       if (!cancelled && Object.keys(updates).length) {
         setGeoMap(prev => {

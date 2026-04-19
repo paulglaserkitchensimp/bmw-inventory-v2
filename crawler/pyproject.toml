@@ -1,0 +1,16 @@
+[project]
+name = "bmw-crawler"
+version = "0.1.0"
+description = "BMW dealer inventory crawler across Dealer.com and DealerInspire platforms."
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.31",
+    "python-dotenv>=1.0",
+    "ddgs>=6.0",
+    "openai>=1.40",
+    "playwright>=1.47",
+    "playwright-stealth>=1.0",
+]
+
+[tool.uv]
+package = false

@@ -10,11 +10,14 @@ import iconRetinaUrl from 'leaflet/dist/images/marker-icon-2x.png'
 import shadowUrl from 'leaflet/dist/images/marker-shadow.png'
 L.Icon.Default.mergeOptions({ iconUrl, iconRetinaUrl, shadowUrl })
 
-// Fly to selected vehicle's dealer when selection changes
-function FlyTo({ coords }: { coords: [number, number] | null }) {
+// Fly to selected vehicle's dealer + close any open popup when selection changes
+function SelectionEffect({ coords, selectedVin }: { coords: [number, number] | null; selectedVin: string | null }) {
   const map = useMap()
   if (coords) {
     map.flyTo(coords, Math.max(map.getZoom(), 10), { duration: 0.8 })
+  }
+  if (selectedVin) {
+    map.closePopup()
   }
   return null
 }
@@ -73,7 +76,7 @@ export default function MapView({ vehicles, geoMap, selected, onSelect }: Props)
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        <FlyTo coords={selectedCoords} />
+        <SelectionEffect coords={selectedCoords} selectedVin={selected?.vin ?? null} />
 
         {[...groups.values()].map(g => {
           const isActive = g.key === selectedKey
