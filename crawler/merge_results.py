@@ -36,6 +36,8 @@ import pathlib
 import sys
 from typing import Any
 
+from carfax_utils import merge_carfax
+
 
 # Authoritative fields used to (a) pick the "best" base record when a VIN
 # shows up in multiple sources, and (b) backfill still-empty fields from
@@ -134,6 +136,13 @@ def _merge_records(records: list[dict]) -> dict:
         for k in AUTHORITATIVE_FIELDS:
             if _is_empty(out.get(k)) and not _is_empty(extra.get(k)):
                 out[k] = extra[k]
+        # Prefer dealer-site SVG badge slugs over Autotrader VHR composites.
+        if extra.get("carfaxBadge") or extra.get("carfaxUrl") or extra.get("ownerCount") is not None:
+            merged = merge_carfax(
+                {k: out.get(k) for k in ("carfaxUrl", "carfaxBadge", "ownerCount")},
+                {k: extra.get(k) for k in ("carfaxUrl", "carfaxBadge", "ownerCount")},
+            )
+            out.update({k: v for k, v in merged.items() if v is not None})
         # Replace aggregator dealer URLs with a real one when available
         if (
             _is_bad_dealer_url(out.get("dealerUrl"))

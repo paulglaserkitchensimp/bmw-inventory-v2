@@ -15,7 +15,7 @@ python3 search_inventory.py                          # all defaults
 python3 search_inventory.py --trim "xDrive40i" --max-miles 20000 --out x7_40i.json
 python3 search_inventory.py --skip-fetch             # fast, no CarFax
 
-Defaults: year=2025-2026, model=X7, trim=M60i, miles=200–15000, type=all
+Defaults: year=2025-2026, model=X7, trim=M60i, miles=60–15000, type=all
 
 Output fields per vehicle:
   vin, stockNumber, year, make, model, trim, type, odometer, internetPrice,
@@ -30,6 +30,7 @@ import json
 import pathlib
 import re
 import sys
+import time
 from collections import defaultdict
 from datetime import date, datetime
 
@@ -218,10 +219,13 @@ VDP_HEADERS = {
     "Accept-Encoding": "gzip, deflate, br",
 }
 
-CFX_RE    = re.compile(r'https://www\.carfax\.com/vehiclehistory/ar20/[^\s"\'<>&]+')
-BADGE_RE  = re.compile(r'partnerstatic\.carfax\.com/img/valuebadge/(\w+)\.svg', re.IGNORECASE)
-OWNER_RE  = re.compile(r'(?:^|_)(\d+)own', re.IGNORECASE)   # matches 1own anywhere in slug
-TEL_RE    = re.compile(r'href=["\']tel:([^"\']+)["\']', re.IGNORECASE)
+from carfax_utils import (
+    badge_log_suffix,
+    extract_from_html,
+    merge_carfax,
+)
+
+TEL_RE = re.compile(r'href=["\']tel:([^"\']+)["\']', re.IGNORECASE)
 
 
 def _normalize_phone(raw: str | None) -> str | None:
@@ -236,32 +240,9 @@ def _normalize_phone(raw: str | None) -> str | None:
     return f"{digits[0:3]}-{digits[3:6]}-{digits[6:10]}"
 
 
-def _parse_badge_slug(slug: str) -> dict:
-    """Return ownerCount + carfaxBadge from a badge filename slug.
-
-    Handles all known CarFax badge filename variants:
-      '1own_black'                → ownerCount=1
-      '1own_great_black'          → ownerCount=1
-      'valuebadge_1own_fair_black'→ ownerCount=1
-      'noaccident'                → ownerCount=None
-      'showme_black'              → ownerCount=None
-    """
-    om = OWNER_RE.search(slug)
-    return {"ownerCount": int(om.group(1)) if om else None, "carfaxBadge": slug}
-
-
 def _extract_vdp_signals(html: str) -> dict:
     """Parse CarFax + contact signals (signed URL, owner count, phone) from raw VDP HTML."""
-    out: dict = {}
-    cfx = CFX_RE.search(html)
-    if cfx:
-        out["carfaxUrl"] = cfx.group(0)
-    for slug in BADGE_RE.findall(html):
-        info = _parse_badge_slug(slug)
-        if info.get("ownerCount") is not None:
-            out.update(info)
-            break
-        out.setdefault("carfaxBadge", info["carfaxBadge"])
+    out: dict = extract_from_html(html)
     # First tel: link on the page — typically the dealer's main sales line.
     for raw in TEL_RE.findall(html):
         phone = _normalize_phone(raw)
@@ -399,70 +380,62 @@ def _connect_real_chrome(pw):
     shutdown_chrome_if_owned at the script level.
     """
     try:
-        browser = pw.chromium.connect_over_cdp(CHROME_DEBUG_URL, timeout=3000)
+        # no_defaults=True avoids Browser.setDownloadBehavior, which Chrome
+        # rejects when attaching over CDP (Playwright <1.60 always failed here).
+        browser = pw.chromium.connect_over_cdp(
+            CHROME_DEBUG_URL, timeout=10000, no_defaults=True
+        )
         return browser, False
-    except Exception:
+    except TypeError:
+        # Older Playwright without no_defaults — best-effort connect.
+        try:
+            browser = pw.chromium.connect_over_cdp(CHROME_DEBUG_URL, timeout=10000)
+            return browser, False
+        except Exception as e:
+            print(f"  CDP connect failed ({e.__class__.__name__}) — "
+                  "falling back to Playwright profile", flush=True)
+            return None, False
+    except Exception as e:
+        print(f"  CDP connect failed ({e.__class__.__name__}) — "
+              "falling back to Playwright profile", flush=True)
         return None, False
 
 
 def _page_result(page, v: dict) -> dict | None:
-    """Extract CarFax signals from an already-navigated browser page.
-    Returns updated record, or None if page title is empty (render failed).
-    Extracts: carfaxUrl (signed ar20 link), ownerCount, carfaxBadge.
-    """
+    """Extract CarFax signals from an already-navigated browser page."""
     page.wait_for_timeout(_PW_SETTLE)
     title = page.evaluate("() => document.title") or ""
     if not title:
         return None   # encrypted / challenge not solved
 
-    # Signed CarFax report link
+    html = page.content()
+    signals = extract_from_html(html)
+
+    # Dynamic DOM links may not appear in static HTML — merge if JS finds them.
     cfx_links: list[str] = page.evaluate("""
         () => Array.from(
                 document.querySelectorAll('a[href*="carfax.com/vehiclehistory/ar20"]')
               ).map(a => a.href)
     """)
-    cfx_url = cfx_links[0] if cfx_links else None
+    if cfx_links:
+        signals = merge_carfax(signals, {"carfaxUrl": cfx_links[0]})
 
-    # CarFax value badge images  → owner count
-    badge_srcs: list[str] = page.evaluate("""
-        () => Array.from(
-                document.querySelectorAll('img[src*="partnerstatic.carfax.com/img/valuebadge"]')
-              ).map(i => i.src)
-    """)
-    badge_info: dict = {}
-    for src in badge_srcs:
-        m = BADGE_RE.search(src)
-        if m:
-            info = _parse_badge_slug(m.group(1))
-            if info.get("ownerCount") is not None:
-                badge_info = info
-                break
-            badge_info = badge_info or info
-
-    # Dealer phone — first tel: link on the page
-    phone_hrefs: list[str] = page.evaluate("""
+    phone = None
+    for raw in page.evaluate("""
         () => Array.from(
                 document.querySelectorAll('a[href^="tel:"]')
               ).map(a => a.getAttribute('href').replace(/^tel:/i, ''))
-    """)
-    phone = None
-    for raw in phone_hrefs:
+    """):
         phone = _normalize_phone(raw)
         if phone:
             break
-
-    # Fallback: regex over raw HTML
-    html = page.content()
-    if not cfx_url:
-        m2 = CFX_RE.search(html)
-        cfx_url = m2.group(0) if m2 else None
     if not phone:
         for raw in TEL_RE.findall(html):
             phone = _normalize_phone(raw)
             if phone:
                 break
 
-    out = {**v, "resolvedLink": page.url, "carfaxUrl": cfx_url, "vdpStatus": "ok", **badge_info}
+    out = {**v, "resolvedLink": page.url, "vdpStatus": "ok", **signals}
     if phone and not v.get("dealerPhone"):
         out["dealerPhone"] = phone
     return out
@@ -531,9 +504,8 @@ def _run_browser_pass(label: str, n_total: int, idxs: list[int],
         if result is not None:
             results[idx] = result
             ok += 1
-            flag  = "✓cfx" if result.get("carfaxUrl") else "ok"
-            badge = f" {result['ownerCount']}owner" if result.get("ownerCount") is not None else ""
-            print(flag + badge, flush=True)
+            flag = "✓cfx" if result.get("carfaxUrl") else "ok"
+            print(flag + badge_log_suffix(result), flush=True)
             if result.get("carfaxUrl"):
                 cfx += 1
         else:
@@ -754,9 +726,23 @@ def _search_ddc_single(make: str, model: str, year: int | None, trim: str | None
         },
     }
 
-    r = requests.post(DDC_ENDPOINT, headers=DDC_HEADERS, json=payload, timeout=20)
-    r.raise_for_status()
-    data = r.json()
+    # bmwofdallas.com's DDC proxy occasionally 504s on specific OEM queries
+    # (notably XM / year=2026 / new) even though retries usually succeed.
+    data = None
+    for attempt in range(3):
+        r = requests.post(DDC_ENDPOINT, headers=DDC_HEADERS, json=payload, timeout=45)
+        if r.status_code in (502, 503, 504):
+            if attempt < 2:
+                wait = 2 ** attempt
+                print(f"  DDC [{condition}] HTTP {r.status_code} for year={year} "
+                      f"— retrying in {wait}s…", flush=True)
+                time.sleep(wait)
+                continue
+        r.raise_for_status()
+        data = r.json()
+        break
+    if data is None:
+        raise RuntimeError(f"DDC [{condition}] failed for year={year}")
 
     raw_accounts: dict = data.get("accounts", {})
     vehicles = data.get("inventory", [])
@@ -1219,7 +1205,7 @@ Return ONLY the JSON array, no explanation.
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Search BMW inventory nationwide (defaults: 2025-2026 X7 M60i, 200–15000 mi, new+used)"
+        description="Search BMW inventory nationwide (defaults: 2025-2026 X7 M60i, 60–15000 mi, new+used)"
     )
     parser.add_argument("--make",          default="BMW")
     parser.add_argument("--model",         default="X7",
@@ -1233,8 +1219,8 @@ def main() -> None:
                              "--search X7:M60i --search X7:xDrive40i --search X5:M60i "
                              "--search XM. Omit ':TRIM' (or leave blank) to match any "
                              "trim of that model. When set, --model/--trim are ignored.")
-    parser.add_argument("--min-miles",     type=int, default=200,
-                        help="Minimum odometer (default: 200)")
+    parser.add_argument("--min-miles",     type=int, default=60,
+                        help="Minimum odometer (default: 60)")
     parser.add_argument("--max-miles",     type=int, default=15000,
                         help="Maximum odometer (default: 15000)")
     parser.add_argument("--type",          choices=["new", "used", "all"], default="all",

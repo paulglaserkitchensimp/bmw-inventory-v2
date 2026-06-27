@@ -30,6 +30,7 @@ import html as html_lib
 import json
 import os
 import pathlib
+import queue
 import re
 import sys
 import threading
@@ -39,6 +40,8 @@ from typing import Any
 from urllib.parse import urlencode, urlparse, urlunparse, parse_qsl
 
 import requests
+
+from carfax_utils import apply_carfax, badge_log_suffix
 
 HEADERS = {
     "User-Agent": (
@@ -64,7 +67,11 @@ OG_DESC_RE = re.compile(
 )
 # customer_id is the authoritative dealer id – we use it to pick the *correct*
 # /dealers/{id}/{slug}/ URL out of the many dealer-profile links on the page.
-CUSTOMER_ID_RE = re.compile(r'"customer_id"\s*:\s*"?(\d+)"?')
+CUSTOMER_ID_RE = re.compile(r'"customer_id"\s*:\s*"([^"]+)"')
+DEALER_PROFILE_RE = re.compile(
+    r'href="(https?://www\.cars\.com/dealers/\d+/[^"/]+/)"',
+    re.IGNORECASE,
+)
 # Data blob fields inside the VDP (unquoted raw JSON embedded in script tags)
 DEALER_NAME_RE = re.compile(r'"dealer_name"\s*:\s*"([^"]+)"')
 STOCK_NUM_RE = re.compile(r'"stockNumber"\s*:\s*"([^"]+)"')
@@ -103,9 +110,20 @@ _PW = None            # sync_playwright() context manager handle
 _PW_CTX = None        # persistent browser context
 _PW_UNAVAILABLE = False  # set True if playwright import/launch fails — stop retrying
 _PW_HEADLESS = True   # flipped to False by --warmup so DataDome can be solved by hand
-# Playwright's sync API is not thread-safe; VDP fetches run multi-threaded, so
-# all browser navigation is serialized through this lock.
-_PW_LOCK = threading.Lock()
+# Playwright's sync API is greenlet-based and must stay on one thread. VDP
+# fetches run in a ThreadPoolExecutor, so all browser I/O is dispatched to a
+# dedicated worker thread via _PW_CMD_QUEUE rather than called cross-thread.
+_PW_CMD_QUEUE: queue.Queue = queue.Queue()
+_PW_WORKER: threading.Thread | None = None
+_PW_WORKER_LOCK = threading.Lock()
+# Kept on the browser worker thread: one tab stays on cars.com search so VDP
+# fetches can use in-page `fetch()` with session cookies (goto on a fresh tab
+# gets DataDome "Just a moment..." even when search pages work).
+_PW_SESSION_PAGE = None
+_VDP_SESSION_PRIMED = False
+_LAST_SEARCH_URL: str | None = None
+_ZIP_CACHE: dict[str, dict[str, str]] = {}
+VDP_URL_MARKER = "/vehicledetail/"
 
 
 def _browser_settle(page, full: bool = False) -> None:
@@ -139,8 +157,8 @@ def _clear_stale_singleton_locks() -> None:
             pass
 
 
-def _ensure_browser():
-    """Lazily launch a stealthed persistent Chromium context. Returns it or None."""
+def _ensure_browser_impl():
+    """Lazily launch a stealthed persistent Chromium context. Worker-thread only."""
     global _PW, _PW_CTX, _PW_UNAVAILABLE
     if _PW_UNAVAILABLE:
         return None
@@ -176,8 +194,16 @@ def _ensure_browser():
         return None
 
 
-def _shutdown_browser() -> None:
-    global _PW, _PW_CTX
+def _shutdown_browser_impl() -> None:
+    """Tear down Playwright. Worker-thread only."""
+    global _PW, _PW_CTX, _PW_SESSION_PAGE, _VDP_SESSION_PRIMED
+    try:
+        if _PW_SESSION_PAGE is not None:
+            _PW_SESSION_PAGE.close()
+    except Exception:
+        pass
+    _PW_SESSION_PAGE = None
+    _VDP_SESSION_PRIMED = False
     try:
         if _PW_CTX is not None:
             _PW_CTX.close()
@@ -192,10 +218,64 @@ def _shutdown_browser() -> None:
     _PW = None
 
 
+def _browser_worker_loop() -> None:
+    """Owns the Playwright sync API for the lifetime of a crawl."""
+    try:
+        while True:
+            cmd = _PW_CMD_QUEUE.get()
+            if cmd[0] == "shutdown":
+                _shutdown_browser_impl()
+                if len(cmd) > 1:
+                    cmd[1].put(True)
+                break
+            if cmd[0] == "get":
+                _, url, full, resp_q = cmd
+                resp_q.put(_browser_get_impl(url, full=full))
+    except Exception as e:
+        print(f"  ! browser worker crashed: {e}", file=sys.stderr)
+
+
+def _ensure_browser_worker() -> None:
+    """Start the dedicated browser thread on first use."""
+    global _PW_WORKER
+    with _PW_WORKER_LOCK:
+        if _PW_WORKER is not None and _PW_WORKER.is_alive():
+            return
+        _PW_WORKER = threading.Thread(
+            target=_browser_worker_loop,
+            name="cars_com_browser",
+            daemon=True,
+        )
+        _PW_WORKER.start()
+
+
+def _ensure_browser():
+    """Warmup runs on the main thread; normal crawls route through the worker."""
+    return _ensure_browser_impl()
+
+
+def _shutdown_browser() -> None:
+    """Stop the browser worker and tear down Playwright cleanly."""
+    global _PW_WORKER
+    if _PW_WORKER is not None and _PW_WORKER.is_alive():
+        done: queue.Queue = queue.Queue()
+        _PW_CMD_QUEUE.put(("shutdown", done))
+        try:
+            done.get(timeout=15)
+        except queue.Empty:
+            pass
+        _PW_WORKER.join(timeout=5)
+    else:
+        _shutdown_browser_impl()
+    _PW_WORKER = None
+
+
 def _shutdown_browser_atexit() -> None:
     """atexit hook. Playwright's sync API can't be driven from the interpreter
     shutdown greenlet, so we just hard-exit if a browser is still up — the data
     file is already written by then and a clean teardown isn't worth a hang."""
+    if _PW_WORKER is not None and _PW_WORKER.is_alive():
+        os._exit(0)
     if _PW_CTX is not None or _PW is not None:
         os._exit(0)
 
@@ -211,37 +291,125 @@ class _FakeResponse:
         self.status_code = status_code
 
 
-def _browser_get(url: str, full: bool = False) -> _FakeResponse | None:
-    """Fetch a page through the stealth browser. Returns a _FakeResponse with the
-    rendered HTML, or None if the browser is unavailable / navigation failed.
+def _is_vdp_challenge(html: str) -> bool:
+    """DataDome serves a tiny interstitial without listing/dealer markup."""
+    if not html:
+        return True
+    lower = html.lower()
+    if len(html) < 15000:
+        return True
+    if "just a moment" in lower or "verify you are human" in lower:
+        return True
+    if 'property="og:description"' not in html and "dealer_name" not in html:
+        return True
+    return False
 
-    Serialized via _PW_LOCK since the sync Playwright API is not thread-safe and
-    VDP fetches run concurrently."""
-    with _PW_LOCK:
-        ctx = _ensure_browser()
-        if ctx is None:
+
+def _is_search_challenge(html: str) -> bool:
+    if not html or len(html) < 10000:
+        return True
+    return "<fuse-card" not in html and "data-vehicle-details" not in html
+
+
+def _zip_to_place(zip_code: str | None) -> dict[str, str] | None:
+    """Resolve a US ZIP → {city, state} for seller hints on search cards."""
+    if not zip_code:
+        return None
+    z = re.sub(r"\D", "", str(zip_code))[:5]
+    if len(z) != 5:
+        return None
+    if z in _ZIP_CACHE:
+        return _ZIP_CACHE[z]
+    try:
+        r = requests.get(f"https://api.zippopotam.us/us/{z}", headers=HEADERS, timeout=10)
+        if not r.ok:
             return None
-        page = None
-        try:
-            page = ctx.new_page()
-            resp = page.goto(url, timeout=TIMEOUT * 1000, wait_until="domcontentloaded")
-            _browser_settle(page, full=full)
-            status = resp.status if resp is not None else 200
-            html = page.content()
-            # DataDome interstitial sometimes returns 200 with a challenge body
-            # and no listing cards; treat a still-empty body as a soft failure.
-            if status == 404:
-                return _FakeResponse(html, 404)
-            return _FakeResponse(html, 200 if html else status)
-        except Exception as e:
-            print(f"  ! browser fetch {url} → {e.__class__.__name__}", file=sys.stderr)
+        place = r.json()["places"][0]
+        result = {
+            "city": place["place name"],
+            "state": place["state abbreviation"].upper(),
+        }
+        _ZIP_CACHE[z] = result
+        return result
+    except (requests.RequestException, KeyError, IndexError, ValueError):
+        return None
+
+
+def _prime_vdp_session(ctx, landing_url: str):
+    """Open one persistent tab on a search page so VDP fetch() inherits cookies."""
+    global _PW_SESSION_PAGE, _VDP_SESSION_PRIMED
+    if (
+        _VDP_SESSION_PRIMED
+        and _PW_SESSION_PAGE is not None
+        and not _PW_SESSION_PAGE.is_closed()
+    ):
+        return _PW_SESSION_PAGE
+    _PW_SESSION_PAGE = ctx.new_page()
+    _PW_SESSION_PAGE.goto(landing_url, timeout=TIMEOUT * 1000, wait_until="domcontentloaded")
+    _browser_settle(_PW_SESSION_PAGE, full=True)
+    _VDP_SESSION_PRIMED = True
+    return _PW_SESSION_PAGE
+
+
+def _browser_fetch_vdp_impl(ctx, url: str) -> _FakeResponse | None:
+    """Fetch a VDP via in-session fetch() — survives DataDome better than goto."""
+    landing = _LAST_SEARCH_URL or "https://www.cars.com/shopping/results/?makes[]=bmw"
+    page = _prime_vdp_session(ctx, landing)
+    try:
+        html = page.evaluate(
+            """async (url) => {
+                const r = await fetch(url, {credentials: 'include'});
+                return await r.text();
+            }""",
+            url,
+        )
+    except Exception as e:
+        print(f"  ! browser VDP fetch {url} → {e.__class__.__name__}", file=sys.stderr)
+        return None
+    if _is_vdp_challenge(html):
+        return None
+    return _FakeResponse(html, 200)
+
+
+def _browser_get_impl(url: str, full: bool = False) -> _FakeResponse | None:
+    """Fetch a page through the stealth browser. Worker-thread only."""
+    ctx = _ensure_browser_impl()
+    if ctx is None:
+        return None
+
+    if VDP_URL_MARKER in url:
+        time.sleep(0.35)  # gentle rate limit between in-session VDP fetches
+        return _browser_fetch_vdp_impl(ctx, url)
+
+    page = None
+    try:
+        page = ctx.new_page()
+        resp = page.goto(url, timeout=TIMEOUT * 1000, wait_until="domcontentloaded")
+        _browser_settle(page, full=full)
+        status = resp.status if resp is not None else 200
+        html = page.content()
+        if status == 404:
+            return _FakeResponse(html, 404)
+        if full and _is_search_challenge(html):
             return None
-        finally:
-            if page is not None:
-                try:
-                    page.close()
-                except Exception:
-                    pass
+        return _FakeResponse(html, 200 if html else status)
+    except Exception as e:
+        print(f"  ! browser fetch {url} → {e.__class__.__name__}", file=sys.stderr)
+        return None
+    finally:
+        if page is not None:
+            try:
+                page.close()
+            except Exception:
+                pass
+
+
+def _browser_get(url: str, full: bool = False) -> _FakeResponse | None:
+    """Fetch a page through the stealth browser. Dispatches to the worker thread."""
+    _ensure_browser_worker()
+    resp_q: queue.Queue = queue.Queue()
+    _PW_CMD_QUEUE.put(("get", url, full, resp_q))
+    return resp_q.get()
 
 
 # Once cars.com 403s us, the whole session is IP-blocked for the plain client.
@@ -317,6 +485,14 @@ def _infer_default_trim(url: str) -> str | None:
     return None
 
 
+def _card_html_snippet(html: str, listing_id: str) -> str:
+    """Slice of search-page HTML around a fuse-card (may contain badge markup)."""
+    idx = html.find(listing_id)
+    if idx < 0:
+        return ""
+    return html[max(0, idx - 400) : idx + 5000]
+
+
 def _parse_cards(html: str) -> list[dict[str, Any]]:
     cards: list[dict[str, Any]] = []
     for m in CARD_RE.finditer(html):
@@ -326,12 +502,15 @@ def _parse_cards(html: str) -> list[dict[str, Any]]:
         except json.JSONDecodeError:
             continue
         blob["_listingId"] = listing_id
+        # CarFax badges may live in card JSON and/or nearby search-card HTML.
+        blob = apply_carfax(blob, blob, _card_html_snippet(html, listing_id))
         cards.append(blob)
     return cards
 
 
 def _scrape_search(url: str, max_pages: int, session: requests.Session) -> list[dict[str, Any]]:
     """Walk paginated search URL until no new listings come back."""
+    global _LAST_SEARCH_URL
     seen: set[str] = set()
     all_cards: list[dict[str, Any]] = []
     for page in range(1, max_pages + 1):
@@ -341,6 +520,7 @@ def _scrape_search(url: str, max_pages: int, session: requests.Session) -> list[
         if r is None:
             print(f"  ! page {page} unreachable – stopping")
             break
+        _LAST_SEARCH_URL = page_url
         cards = _parse_cards(r.text)
         if not cards:
             print(f"  · no cards on page {page} – done")
@@ -383,8 +563,7 @@ def _extract_vdp(html: str) -> dict[str, Any]:
         if m:
             out["dealerName"] = html_lib.unescape(m.group(1).strip())
 
-    # Cars.com dealer profile URL – key off customer_id so we don't accidentally
-    # pick up a "similar dealers" recommendation link.
+    # Cars.com dealer profile URL – key off customer_id when present.
     m = CUSTOMER_ID_RE.search(html)
     if m:
         cid = m.group(1)
@@ -395,10 +574,13 @@ def _extract_vdp(html: str) -> dict[str, Any]:
         if pm:
             out["dealerUrl"] = pm.group(1)
         else:
-            # Any bare /dealers/{cid}/slug/ link on the page (href may be relative)
             pm = re.search(rf'/dealers/{re.escape(cid)}/([^/"#]+)/', html)
             if pm:
                 out["dealerUrl"] = f"https://www.cars.com/dealers/{cid}/{pm.group(1)}/"
+    if not out["dealerUrl"]:
+        pm = DEALER_PROFILE_RE.search(html)
+        if pm:
+            out["dealerUrl"] = pm.group(1)
 
     m = STOCK_NUM_RE.search(html)
     if m:
@@ -414,26 +596,52 @@ def _extract_vdp(html: str) -> dict[str, Any]:
     if m:
         out["trim"] = (m.group(1) or m.group(2)).strip()
 
-    # Phone: first plausible US phone number in the page (cars.com injects the
-    # dealer-routed DNI number near the "Call now" button)
-    m = PHONE_RE.search(html)
-    if m:
-        out["dealerPhone"] = _normalize_phone("".join(m.groups()))
+    # Phone: dealer DNI near "Call now" — skip on challenge/interstitial pages.
+    if not _is_vdp_challenge(html):
+        m = PHONE_RE.search(html)
+        if m:
+            out["dealerPhone"] = _normalize_phone("".join(m.groups()))
 
-    return out
+    return apply_carfax(out, html)
 
 
-def _fetch_vdp(listing_id: str, session: requests.Session) -> tuple[dict[str, Any], str]:
+def _card_seller_hints(card: dict[str, Any]) -> dict[str, Any]:
+    """Fields available on the search card before/alongside the VDP fetch."""
+    hints: dict[str, Any] = {}
+    if card.get("exteriorColor"):
+        hints["extColor"] = card["exteriorColor"]
+    if card.get("trim"):
+        hints["trim"] = card["trim"]
+    seller = card.get("seller") or {}
+    place = _zip_to_place(seller.get("zip"))
+    if place:
+        hints["dealerCity"] = place["city"]
+        hints["dealerState"] = place["state"]
+    return hints
+
+
+def _merge_vdp(card: dict[str, Any], vdp: dict[str, Any]) -> dict[str, Any]:
+    """Prefer VDP fields; backfill from search-card hints when VDP is sparse."""
+    merged = {**_card_seller_hints(card), **{k: v for k, v in vdp.items() if v}}
+    return apply_carfax(merged, card)
+
+
+def _fetch_vdp(card: dict[str, Any], session: requests.Session) -> tuple[dict[str, Any], str]:
     """Return (extracted_fields, vdpStatus)."""
+    listing_id = card["_listingId"]
     url = VDP_BASE.format(listing_id=listing_id)
+    hints = _card_seller_hints(card)
     r = _get(url, session)
     if r is None:
-        return {}, "blocked"
+        return hints, "blocked" if not hints.get("dealerState") else "partial"
     if r.status_code == 404:
-        return {}, "not_found"
-    if r.status_code != 200:
-        return {}, "blocked"
-    return _extract_vdp(r.text), "ok"
+        return hints, "not_found"
+    if r.status_code != 200 or _is_vdp_challenge(r.text):
+        return hints, "blocked" if not hints.get("dealerState") else "partial"
+    vdp = _merge_vdp(card, _extract_vdp(r.text))
+    has_dealer = any(vdp.get(k) for k in ("dealerName", "dealerPhone", "dealerUrl"))
+    status = "ok" if has_dealer else ("partial" if vdp.get("dealerState") else "blocked")
+    return vdp, status
 
 
 def _to_record(card: dict[str, Any], vdp: dict[str, Any], vdp_status: str, default_trim: str | None = None) -> dict[str, Any]:
@@ -451,7 +659,7 @@ def _to_record(card: dict[str, Any], vdp: dict[str, Any], vdp_status: str, defau
     price = _maybe_int(card.get("price"))
     mileage = _maybe_int(card.get("mileage"))
 
-    return {
+    base = {
         "vin": vin,
         "stockNumber": vdp.get("stockNumber"),
         "year": year,
@@ -460,14 +668,13 @@ def _to_record(card: dict[str, Any], vdp: dict[str, Any], vdp_status: str, defau
         "trim": card.get("trim") or vdp.get("trim") or default_trim,
         "odometer": mileage,
         "internetPrice": price,
-        "extColor": vdp.get("extColor"),
+        "extColor": vdp.get("extColor") or card.get("exteriorColor"),
         "interiorColor": vdp.get("interiorColor"),
         "certified": bool(card.get("cpoIndicator")),
         "daysOnLot": None,
         "dateInStock": None,
         "nhtsaUrl": f"https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/{vin}?format=json" if vin else None,
         "carfaxPaywallUrl": f"https://www.carfax.com/VehicleHistory/p/Report.cfx?partner=ADV_0&vin={vin}" if vin else None,
-        "carfaxUrl": None,
         "dealerName": vdp.get("dealerName"),
         "dealerCity": vdp.get("dealerCity"),
         "dealerState": vdp.get("dealerState"),
@@ -480,6 +687,7 @@ def _to_record(card: dict[str, Any], vdp: dict[str, Any], vdp_status: str, defau
         "resolvedLink": url,
         "vdpStatus": vdp_status,
     }
+    return apply_carfax(base, vdp, card)
 
 
 def _warmup(url: str) -> int:
@@ -521,6 +729,10 @@ def main() -> int:
     ap.add_argument("--out", default="cars_com_results.json")
     ap.add_argument("--exclude-states", default="CA", help="Comma-separated state codes to drop (default: CA)")
     ap.add_argument("--workers", type=int, default=6, help="Concurrent VDP fetches")
+    ap.add_argument("--min-miles", type=int, default=60,
+                    help="Minimum odometer (default: 60)")
+    ap.add_argument("--max-miles", type=int, default=15000,
+                    help="Maximum odometer (default: 15000)")
     ap.add_argument("--skip-vdp", action="store_true",
                     help="Skip per-listing VDP fetches (no dealer name/phone/colors, "
                          "and no state filtering since state comes from the VDP). "
@@ -549,18 +761,18 @@ def main() -> int:
 
     if args.skip_vdp:
         print("\n[vdp] skipped (--skip-vdp) — dealer fields will be empty", flush=True)
-        records = [_to_record(c, {}, "skipped", default_trim=default_trim) for c in cards]
+        records = [_to_record(c, _card_seller_hints(c), "skipped", default_trim=default_trim) for c in cards]
     else:
-        # Once the session is browser-bound, VDP fetches are serialized through a
-        # single browser anyway, so extra threads just contend on the lock. Drop
-        # to 1 worker in that case to keep output orderly.
+        # Browser I/O is serialized on the Playwright worker thread; extra
+        # threads only queue up behind it. Drop to 1 when browser-bound so
+        # progress output stays readable.
         workers = 1 if _SESSION_BLOCKED else args.workers
         print(f"\n[vdp] fetching dealer info for {len(cards)} listings ({workers} worker"
               f"{'s' if workers != 1 else ''})…", flush=True)
         records = []
         with ThreadPoolExecutor(max_workers=workers) as pool:
             futures = {
-                pool.submit(_fetch_vdp, c["_listingId"], session): c
+                pool.submit(_fetch_vdp, c, session): c
                 for c in cards
             }
             for i, fut in enumerate(as_completed(futures), 1):
@@ -572,11 +784,31 @@ def main() -> int:
                     vdp, status = {}, "blocked"
                 rec = _to_record(card, vdp, status, default_trim=default_trim)
                 dealer = f"{rec.get('dealerName') or '?'} ({rec.get('dealerCity') or '?'}, {rec.get('dealerState') or '?'})"
-                print(f"  [{i:>3}/{len(cards)}] {rec['vin']} {rec['year']} {rec['trim']} · {dealer} · {status}", flush=True)
+                badge = badge_log_suffix(rec)
+                print(f"  [{i:>3}/{len(cards)}] {rec['vin']} {rec['year']} {rec['trim']} · {dealer} · {status}{badge}", flush=True)
                 records.append(rec)
 
     before = len(records)
-    filtered = [r for r in records if (r.get("dealerState") or "").upper() not in exclude]
+    mileage_filtered = []
+    dropped_mileage = 0
+    for r in records:
+        odo = r.get("odometer")
+        if args.min_miles is not None and odo is not None and odo < args.min_miles:
+            dropped_mileage += 1
+            continue
+        if args.max_miles is not None and odo is not None and odo > args.max_miles:
+            dropped_mileage += 1
+            continue
+        mileage_filtered.append(r)
+    if dropped_mileage:
+        print(
+            f"\n[filter] mileage {args.min_miles:,}–{args.max_miles:,}: "
+            f"dropped {dropped_mileage} records",
+            flush=True,
+        )
+
+    before = len(mileage_filtered)
+    filtered = [r for r in mileage_filtered if (r.get("dealerState") or "").upper() not in exclude]
     print(f"\n[filter] dropped {before - len(filtered)} records in {sorted(exclude)}", flush=True)
 
     # Also dedupe by VIN within the scrape itself, preferring records we actually hit

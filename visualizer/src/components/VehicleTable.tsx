@@ -1,8 +1,9 @@
 import { useState, useRef, useMemo } from 'react'
 import type { Vehicle } from '../types'
 import type { AnnotationMap, Tag } from '../hooks/useAnnotations'
-import { TAG_META, nextTag } from '../hooks/useAnnotations'
+import { TAG_META } from '../hooks/useAnnotations'
 import type { GeoMap } from '../hooks/useGeocoder'
+import { badgeClass, badgeLabel, badgeLabelShort } from '../utils/carfaxBadge'
 
 type SortKey = 'distance' | 'odometer' | 'daysOnLot' | 'internetPrice' | 'year' | 'dealerState'
 type SortDir = 'asc' | 'desc'
@@ -28,26 +29,6 @@ function vehicleDistance(v: Vehicle, geoMap: GeoMap): number | null {
   const coords = geoMap[`${v.dealerCity}, ${v.dealerState}`]
   if (!coords) return null
   return haversineMiles(ORIGIN_COORDS, coords)
-}
-
-const BADGE_COLORS: Record<string, string> = {
-  '1own_great_black': 'bg-green-100 text-green-800',
-  '1own_good_black':  'bg-green-100 text-green-800',
-  '1own_black':       'bg-blue-100 text-blue-800',
-  '1own_fair_black':  'bg-yellow-100 text-yellow-800',
-  '1own':             'bg-blue-100 text-blue-800',
-  'noaccident':       'bg-green-100 text-green-800',
-}
-
-function badgeClass(slug: string | null) {
-  if (!slug) return ''
-  return BADGE_COLORS[slug] ?? 'bg-gray-100 text-gray-700'
-}
-
-function ownerLabel(v: Vehicle) {
-  if (v.ownerCount === 1) return '1 owner'
-  if (v.ownerCount && v.ownerCount > 1) return `${v.ownerCount} owners`
-  return '—'
 }
 
 function SortHeader({ label, col, sort, onSort }: {
@@ -217,7 +198,7 @@ export default function VehicleTable({
             <SortHeader label="Days" col="daysOnLot" sort={sort} onSort={toggleSort} />
             <SortHeader label="Price" col="internetPrice" sort={sort} onSort={toggleSort} />
             <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Color</th>
-            <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Owners</th>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">CarFax</th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Dealer</th>
             <SortHeader label="State" col="dealerState" sort={sort} onSort={toggleSort} />
             <SortHeader label={`Dist (${ORIGIN_LABEL})`} col="distance" sort={sort} onSort={toggleSort} />
@@ -268,8 +249,11 @@ export default function VehicleTable({
                 <td className="px-3 py-2 text-gray-600 max-w-[140px] truncate">{v.extColor ?? '—'}</td>
                 <td className="px-3 py-2">
                   {v.carfaxBadge ? (
-                    <span className={`text-xs px-1.5 py-0.5 rounded ${badgeClass(v.carfaxBadge)}`}>
-                      {ownerLabel(v)}
+                    <span
+                      title={badgeLabel(v.carfaxBadge)}
+                      className={`text-xs px-1.5 py-0.5 rounded whitespace-nowrap ${badgeClass(v.carfaxBadge)}`}
+                    >
+                      {badgeLabelShort(v.carfaxBadge)}
                     </span>
                   ) : <span className="text-gray-400">—</span>}
                 </td>

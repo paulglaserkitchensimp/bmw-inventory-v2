@@ -53,8 +53,12 @@ export interface Filters {
    */
   tags: Record<string, TriState>
   years: number[]
-  models: string[]
-  trims: string[]
+  /** Tri-state include/exclude per model name (same semantics as `states`). */
+  models: Record<string, TriState>
+  /** Tri-state include/exclude per trim name. */
+  trims: Record<string, TriState>
+  /** Tri-state filter on normalized CarFax badge keys (`none` = no badge). */
+  carfaxBadges: Record<string, TriState>
   minMiles: string
   maxMiles: string
   minDays: string
@@ -84,8 +88,9 @@ export const DEFAULT_FILTERS: Filters = {
   states: {},
   tags: {},
   years: [],
-  models: [],
-  trims: [],
+  models: {},
+  trims: {},
+  carfaxBadges: {},
   minMiles: '',
   maxMiles: '',
   minDays: '',

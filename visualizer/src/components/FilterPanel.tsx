@@ -3,6 +3,7 @@ import { DEFAULT_FILTERS } from '../types'
 import { TAG_META } from '../hooks/useAnnotations'
 import type { Tag } from '../hooks/useAnnotations'
 import { OWNER_COUNT_BUCKETS } from '../hooks/useVehicles'
+import { badgeFilterLabel, badgeFilterOptions } from '../utils/carfaxBadge'
 
 const OWNER_BUCKET_LABEL: Record<string, string> = {
   '1': '1 owner',
@@ -150,6 +151,7 @@ export default function FilterPanel({ filters, onChange, vehicles }: Props) {
   const states = [...new Set(vehicles.map(v => v.dealerState).filter(Boolean) as string[])].sort()
   const models = [...new Set(vehicles.map(v => v.model).filter(Boolean) as string[])].sort()
   const trims  = [...new Set(vehicles.map(v => v.trim).filter(Boolean) as string[])].sort()
+  const badgeOptions = badgeFilterOptions(vehicles)
   const years  = [...new Set(vehicles.map(v => v.year).filter((y): y is number => y !== null))]
     .sort((a, b) => b - a)   // newest first
 
@@ -193,11 +195,16 @@ export default function FilterPanel({ filters, onChange, vehicles }: Props) {
           selected={filters.years.map(String)}
           onChange={v => onChange({ ...filters, years: v.map(Number) })} />
 
-        <MultiSelect label="Model" options={models} selected={filters.models}
+        <TriStateSelect label="Model" options={models} selected={filters.models}
           onChange={v => onChange({ ...filters, models: v })} />
 
-        <MultiSelect label="Trim" options={trims} selected={filters.trims}
+        <TriStateSelect label="Trim" options={trims} selected={filters.trims}
           onChange={v => onChange({ ...filters, trims: v })} />
+
+        <TriStateSelect label="CarFax Badge" options={badgeOptions}
+          selected={filters.carfaxBadges}
+          renderLabel={badgeFilterLabel}
+          onChange={v => onChange({ ...filters, carfaxBadges: v })} />
 
         <RangeRow label="Miles" minKey="minMiles" maxKey="maxMiles" filters={filters} onChange={onChange} />
         <RangeRow label="Days on Lot" minKey="minDays" maxKey="maxDays" filters={filters} onChange={onChange} />

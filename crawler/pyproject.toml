@@ -8,7 +8,7 @@ dependencies = [
     "python-dotenv>=1.0",
     "ddgs>=6.0",
     "openai>=1.40",
-    "playwright>=1.47",
+    "playwright>=1.60",
     "playwright-stealth>=1.0",
 ]
 

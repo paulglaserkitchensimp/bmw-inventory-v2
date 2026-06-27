@@ -33,7 +33,7 @@ OPENAI_API_KEY=sk-...
 
 ## Quick start
 
-Default search (`2025–2026 BMW X7 M60i`, `200–15,000 mi`, all conditions):
+Default search (`2025–2026 BMW X7 M60i`, `60–15,000 mi`, all conditions):
 
 ```bash
 uv run search_inventory.py
@@ -88,7 +88,7 @@ uv run search_inventory.py --analyze-only results.json --fetch-carfax
 | `--year` | `2025-2026` | single year (`2025`) or range (`2024-2026`) |
 | `--trim` | `M60i` | e.g. `xDrive40i`, `M60i`, `M Competition`; ignored if `--search` is given |
 | `--search MODEL[:TRIM]` | — | repeatable; sweep multiple model/trim pairs in one run |
-| `--min-miles` | `200` | |
+| `--min-miles` | `60` | |
 | `--max-miles` | `15000` | |
 | `--type` | `all` | `new`, `used`, or `all` |
 | `--out` | `results.json` | |
@@ -197,7 +197,7 @@ trim.
 ```bash
 # Build the URL on cars.com, then hand it to the crawler
 uv run cars_com.py \
-  --url 'https://www.cars.com/shopping/results/?mileage_max=15000&stock_type=cpo&trims[]=bmw-x7-m60i&models[]=bmw-x7&zip=48335&maximum_distance=9999&year_min=2025&year_max=2026&makes[]=bmw&sort=best_match_desc' \
+  --url 'https://www.cars.com/shopping/results/?mileage_min=60&mileage_max=15000&stock_type=cpo&trims[]=bmw-x7-m60i&models[]=bmw-x7&zip=48335&maximum_distance=9999&year_min=2025&year_max=2026&makes[]=bmw&sort=best_match_desc' \
   --out cars_com_results.json
 
 # Exclude extra states (CA is dropped by default)

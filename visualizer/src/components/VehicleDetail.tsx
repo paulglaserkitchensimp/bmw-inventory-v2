@@ -5,6 +5,7 @@ import { TAG_META } from '../hooks/useAnnotations'
 import type { AutoSaveStatus } from '../hooks/useDebouncedAutoSave'
 import { useDebouncedAutoSave } from '../hooks/useDebouncedAutoSave'
 import { parseLeasehackrUrl, discountPercent } from '../utils/leasehackr'
+import { badgeClass, badgeLabel } from '../utils/carfaxBadge'
 
 interface Props {
   vehicle: Vehicle
@@ -279,7 +280,16 @@ export default function VehicleDetail({
 
         <div className="mt-3 mb-1 text-xs font-semibold text-gray-400 uppercase">CarFax</div>
         <Row label="Owner count" value={v.ownerCount != null ? `${v.ownerCount}` : 'Unknown'} />
-        <Row label="Badge" value={v.carfaxBadge} />
+        <div className="flex gap-2 py-1 border-b border-gray-50">
+          <span className="text-xs text-gray-400 w-28 shrink-0">Badge</span>
+          {v.carfaxBadge ? (
+            <span className={`text-xs px-2 py-0.5 rounded ${badgeClass(v.carfaxBadge)}`}>
+              {badgeLabel(v.carfaxBadge)}
+            </span>
+          ) : (
+            <span className="text-sm text-gray-400">Not reported</span>
+          )}
+        </div>
         {v.carfaxUrl && (
           <div className="py-1 border-b border-gray-50">
             <a href={v.carfaxUrl} target="_blank" rel="noreferrer"

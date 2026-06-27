@@ -48,6 +48,7 @@ from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 # Reuse small helpers from the sibling module so records stay consistent
 # with the rest of the pipeline.
 from search_inventory import _normalize_phone, _vin_links, _vin_slug_url
+from carfax_utils import apply_carfax, badge_log_suffix
 
 PROFILE = str(pathlib.Path.home() / ".bmw_browser_profile")
 NEXT_DATA_RE = re.compile(
@@ -204,7 +205,7 @@ def _to_record(
     dealer_url = _dealer_domain(owner)
     phone = _normalize_phone((owner.get("phone") or {}).get("value"))
 
-    return {
+    return apply_carfax({
         "vin": vin,
         "stockNumber": listing.get("stockNumber"),
         "year": year,
@@ -233,7 +234,142 @@ def _to_record(
         "resolvedLink": None,
         "autotraderId": autotrader_id,
         "autotraderSearchUrl": source_url,
-    }
+    }, listing)
+
+
+def _is_autotrader_blocked(html: str, title: str) -> str | None:
+    """Return a human-readable block reason, or None if the page looks OK."""
+    low = html.lower()
+    if "site is currently unavailable" in low or "page unavailable" in title.lower():
+        m = re.search(r"Incident Number:\s*([^\s<]+)", html, re.I)
+        incident = f" (incident {m.group(1)})" if m else ""
+        return (
+            "Autotrader outage / anti-bot block page"
+            + incident
+        )
+    if "captcha" in low or "datadome" in low:
+        return "Autotrader CAPTCHA / DataDome challenge"
+    return None
+
+
+def _load_srp_page(page, url: str, *, max_wait_s: float = 20.0) -> tuple[dict, dict, dict]:
+    """Navigate to an Autotrader SRP and wait for ``__eggsState.inventory``.
+
+    DataDome often serves a shell page first; poll until the inventory blob
+    appears or we time out.
+    """
+    page.goto(url, wait_until="domcontentloaded", timeout=90000)
+    deadline = time.time() + max_wait_s
+    last_title = ""
+    while time.time() < deadline:
+        html = page.content()
+        last_title = page.title()
+        data = _extract_next_data(html)
+        eggs = (
+            data.get("props", {})
+            .get("pageProps", {})
+            .get("__eggsState", {})
+        )
+        inventory: dict = eggs.get("inventory") or {}
+        if inventory:
+            return data, inventory, eggs.get("owners") or {}
+        block = _is_autotrader_blocked(html, last_title)
+        if block:
+            print(f"  blocked: {block}", flush=True)
+            page.wait_for_timeout(1500)
+            continue
+        # Blocked/challenge pages have no __NEXT_DATA__ at all.
+        if not data and ("unavailable" in last_title.lower() or "captcha" in html.lower()):
+            page.wait_for_timeout(1500)
+            continue
+        try:
+            page.wait_for_load_state("networkidle", timeout=5000)
+        except Exception:
+            pass
+        page.wait_for_timeout(1000)
+    print(
+        f"  no inventory blob (title={last_title!r}) — "
+        "Autotrader may be blocking this browser session.\n"
+        "  Fix: run `uv run crawl_autotrader.py --warmup --url '<search url>'` "
+        "in a visible Chrome window, or use --skip-autotrader.",
+        flush=True,
+    )
+    return {}, {}, {}
+
+
+def _open_browser(p, *, headless: bool):
+    """Return (page, cleanup) using real Chrome CDP when available.
+
+    ``search_inventory.py`` warms Chrome on :9222 with trust cookies; prefer
+    that over Playwright's isolated persistent profile, which Autotrader's
+    DataDome often blocks outright.
+    """
+    from search_inventory import _connect_real_chrome, ensure_chrome_debug
+
+    ensure_chrome_debug()
+    browser, _ = _connect_real_chrome(p)
+    if browser:
+        # Reuse the debug Chrome's default context (has trust cookies).
+        ctx = browser.contexts[0] if browser.contexts else browser.new_context()
+        page = ctx.new_page()
+
+        def cleanup() -> None:
+            page.close()
+            if not browser.contexts or ctx not in browser.contexts:
+                ctx.close()
+
+        print("  using real Chrome via CDP (~/.chrome_debug_session)", flush=True)
+        return page, cleanup
+
+    from playwright_stealth.stealth import Stealth
+
+    stealth = Stealth()
+    ctx = p.chromium.launch_persistent_context(
+        PROFILE,
+        channel="chrome",
+        headless=headless,
+        args=["--disable-blink-features=AutomationControlled"],
+        ignore_default_args=["--enable-automation"],
+        viewport={"width": 1400, "height": 1000},
+    )
+    stealth.apply_stealth_sync(ctx)
+    page = ctx.new_page()
+    print(
+        "  using Playwright persistent profile (~/.bmw_browser_profile). "
+        "If blocked, run: uv run crawl_autotrader.py --warmup --url '…'",
+        flush=True,
+    )
+
+    def cleanup() -> None:
+        ctx.close()
+
+    return page, cleanup
+
+
+def _warmup(search_url: str) -> int:
+    """Open Autotrader in visible Chrome so the user can clear blocks once."""
+    from playwright.sync_api import sync_playwright
+
+    print("Opening Autotrader in Chrome (~/.chrome_debug_session).", flush=True)
+    print("→ If you see 'site is currently unavailable', wait or try again later.", flush=True)
+    print("→ Once search results load normally, press Enter here.", flush=True)
+    with sync_playwright() as p:
+        page, cleanup = _open_browser(p, headless=False)
+        try:
+            page.goto(search_url, wait_until="domcontentloaded", timeout=90000)
+            print(f"  title: {page.title()!r}", flush=True)
+        except Exception as e:
+            print(f"  navigation warning: {e.__class__.__name__}", file=sys.stderr)
+        try:
+            input("Press Enter once Autotrader shows real search results… ")
+        except EOFError:
+            page.wait_for_timeout(30000)
+        _, inv, _ = _load_srp_page(page, search_url, max_wait_s=5.0)
+        ok = len(inv) > 0
+        print("Trust cookies saved — crawl should work now." if ok else
+              "Still no inventory blob — try again or use --skip-autotrader.", flush=True)
+        cleanup()
+    return 0 if ok else 1
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -248,6 +384,8 @@ def crawl(
     trim_filter: str | None,
     headless: bool,
     max_pages: int = 12,
+    min_miles: int | None = 60,
+    max_miles: int | None = 15000,
 ) -> list[dict]:
     """Paginate the Autotrader search results and return a flat list of
     records (one per unique VIN).
@@ -258,49 +396,28 @@ def crawl(
     query.
     """
     from playwright.sync_api import sync_playwright
-    from playwright_stealth.stealth import Stealth
 
     seen_vins: dict[str, dict] = {}
     dropped_state: set[str] = set()   # VINs dropped, deduped
+    dropped_mileage: set[str] = set()
     dropped_make_model: set[str] = set()
     dropped_trim: set[str] = set()
+    badge_count = 0
 
     with sync_playwright() as p:
-        stealth = Stealth()
-        ctx = p.chromium.launch_persistent_context(
-            PROFILE,
-            channel="chrome",
-            headless=headless,
-            args=["--disable-blink-features=AutomationControlled"],
-            ignore_default_args=["--enable-automation"],
-            viewport={"width": 1400, "height": 1000},
-        )
-        stealth.apply_stealth_sync(ctx)
-        page = ctx.new_page()
-
+        page, cleanup = _open_browser(p, headless=headless)
         try:
             for page_idx in range(max_pages):
                 first = page_idx * 25
                 url = _paged_url(search_url, first, 25)
                 print(f"→ page {page_idx + 1}  (firstRecord={first})", flush=True)
                 try:
-                    page.goto(url, wait_until="domcontentloaded", timeout=60000)
+                    _, inventory, owners = _load_srp_page(page, url)
                 except Exception as e:
                     print(f"  goto failed: {e}", flush=True)
                     break
-                page.wait_for_timeout(2500)
-
-                data = _extract_next_data(page.content())
-                eggs = (
-                    data.get("props", {})
-                    .get("pageProps", {})
-                    .get("__eggsState", {})
-                )
-                inventory: dict = eggs.get("inventory") or {}
-                owners: dict = eggs.get("owners") or {}
 
                 if not inventory:
-                    print("  no inventory blob — stopping", flush=True)
                     break
 
                 new_on_page = 0
@@ -335,6 +452,14 @@ def crawl(
                         dropped_trim.add(vin)
                         continue
 
+                    odo = _to_int((listing.get("mileage") or {}).get("value"))
+                    if min_miles is not None and odo is not None and odo < min_miles:
+                        dropped_mileage.add(vin)
+                        continue
+                    if max_miles is not None and odo is not None and odo > max_miles:
+                        dropped_mileage.add(vin)
+                        continue
+
                     owner_id = str(listing.get("ownerId") or listing.get("owner") or "")
                     owner = owners.get(owner_id) or {}
                     # Fall back to `ownerName` on the listing if the owners
@@ -350,6 +475,9 @@ def crawl(
 
                     seen_vins[vin] = rec
                     new_on_page += 1
+                    if rec.get("carfaxBadge"):
+                        badge_count += 1
+                        print(f"    {vin}{badge_log_suffix(rec)}", flush=True)
 
                 print(
                     f"  inv={len(inventory)}  new={new_on_page}  "
@@ -362,12 +490,14 @@ def crawl(
                 if new_on_page == 0 and page_idx > 0:
                     break
         finally:
-            ctx.close()
+            cleanup()
 
     print(
         f"\ncollected: {len(seen_vins)} VINs  "
+        f"({badge_count} with CarFax badges)  "
         f"(dropped {len(dropped_make_model)} off-make/model, "
         f"{len(dropped_trim)} off-trim, "
+        f"{len(dropped_mileage)} off-mileage, "
         f"{len(dropped_state)} in-state)"
     )
     return list(seen_vins.values())
@@ -402,9 +532,18 @@ def main() -> None:
         "to keep all states.",
     )
     ap.add_argument("--headless", action="store_true", help="Run Chrome headless")
+    ap.add_argument("--warmup", action="store_true",
+                    help="Open Autotrader in visible Chrome to clear anti-bot blocks")
     ap.add_argument("--max-pages", type=int, default=12)
+    ap.add_argument("--min-miles", type=int, default=60,
+                    help="Minimum odometer (default: 60)")
+    ap.add_argument("--max-miles", type=int, default=15000,
+                    help="Maximum odometer (default: 15000)")
 
     args = ap.parse_args()
+
+    if args.warmup:
+        sys.exit(_warmup(args.url))
 
     # Parse --exclude-states (repeatable + comma-separated). Default CA.
     if args.exclude_states:
@@ -449,6 +588,8 @@ def main() -> None:
         trim_filter=trim_filter,
         headless=args.headless,
         max_pages=args.max_pages,
+        min_miles=args.min_miles,
+        max_miles=args.max_miles,
     )
 
     out_path = pathlib.Path(args.out)
