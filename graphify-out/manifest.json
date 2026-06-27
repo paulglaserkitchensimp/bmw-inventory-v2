@@ -1,0 +1,262 @@
+{
+  "/Users/ion.caza/git/bmw-v2/crawler/algolia_replay.py": {
+    "mtime": 1771469248.6985495,
+    "ast_hash": "a1a22660e01939c4f6c2394759d73afb",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/crawler/autotrader_results.json": {
+    "mtime": 1776744243.2323787,
+    "ast_hash": "788ed43d3c2875e4e289b4a4dc5592e2",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/crawler/autotrader_x5_m60i.json": {
+    "mtime": 1780291697.39515,
+    "ast_hash": "22a877eaf4cf438be48a9711525d8d15",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/crawler/autotrader_x7_40i.json": {
+    "mtime": 1780689255.0581787,
+    "ast_hash": "73d4013842ce68fc1c9933fc7cc95eda",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/crawler/autotrader_x7_m60i.json": {
+    "mtime": 1780689179.9574301,
+    "ast_hash": "cb38a7cfc909b3ada57c2994d29be5dd",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/crawler/autotrader_xm.json": {
+    "mtime": 1780332795.2094607,
+    "ast_hash": "f0b09bd3d9e55a85ef8966679199c299",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/crawler/bmw_ddc_dealers.json": {
+    "mtime": 1771474677.4676998,
+    "ast_hash": "dd7e90d3069e745c7f838e498cbfd31a",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/crawler/bmw_di_slugs.json": {
+    "mtime": 1771471146.6638787,
+    "ast_hash": "4a6e9b3b2992aec94f84377f7121a235",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/crawler/cars_com.py": {
+    "mtime": 1780691482.5977015,
+    "ast_hash": "8817c6d8724b4b3f721163daa8599656",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/crawler/cars_com_results.json": {
+    "mtime": 1776743698.7023432,
+    "ast_hash": "6db7aec608376b9e0a46fceb15e6e761",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/crawler/crawl_autotrader.py": {
+    "mtime": 1780600750.453512,
+    "ast_hash": "2a4100e9d3eb94bcdc63fb5a55036a7f",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/crawler/dealers.json": {
+    "mtime": 1771474719.3293211,
+    "ast_hash": "6a940b28ae9165ce716694a392e1851a",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/crawler/discover_dealers.py": {
+    "mtime": 1771473920.7946057,
+    "ast_hash": "431daf75f5488d4a70e8dfe408d07e03",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/crawler/merge_results.py": {
+    "mtime": 1780600750.4535577,
+    "ast_hash": "a1c4151e2324de8492de4f0578eb0142",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/crawler/results.json": {
+    "mtime": 1780690360.4086308,
+    "ast_hash": "3160062acb93e6751f63ff46560ec8cd",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/crawler/search_inventory.py": {
+    "mtime": 1780600750.4534593,
+    "ast_hash": "b2c27ccd837d12d468f4cda0c2314c9a",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/crawler/sweep_ddc.py": {
+    "mtime": 1771474854.8382392,
+    "ast_hash": "91eb0dcf3894ec737c73e7a6418b0585",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/crawler/sweep_dealers.py": {
+    "mtime": 1771473970.2928698,
+    "ast_hash": "8522e2ab2f0c91556c224292ed8cd667",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/crawler/x7_xdrive40i_results.json": {
+    "mtime": 1771531761.0158293,
+    "ast_hash": "794e6916317a0e72ecc6717ba1a8f6d6",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/crawler/xm_results.json": {
+    "mtime": 1780333531.3582,
+    "ast_hash": "af3e7fe7ce385d90d16cbe5314de69eb",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/visualizer/eslint.config.js": {
+    "mtime": 1771533922.4690623,
+    "ast_hash": "b8893da386a89dfd3672dad848f4ec7e",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/visualizer/package.json": {
+    "mtime": 1771534186.5648685,
+    "ast_hash": "a87dd2deacc60c8eea7f255e4c03da22",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/visualizer/postcss.config.js": {
+    "mtime": 1771534022.0152931,
+    "ast_hash": "ef3ba2a81ba19f8ea5ddf625521e96f0",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/visualizer/public/data/annotations.json": {
+    "mtime": 1780593149.5854495,
+    "ast_hash": "30b3e806ccc5b638e5828d499c51074b",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/visualizer/public/data/geocache.json": {
+    "mtime": 1780512367.5374694,
+    "ast_hash": "3651dcac318e13ed2f3a202a0b896d50",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/visualizer/public/data/oldresults.json": {
+    "mtime": 1776744633.6876638,
+    "ast_hash": "99534b2fcf2092a0531cdc0c3d5cc126",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/visualizer/public/data/results.json": {
+    "mtime": 1780333559.473005,
+    "ast_hash": "02ba7265c55d2b1094d4eebf812c4c3a",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/visualizer/src/App.tsx": {
+    "mtime": 1780600750.4536018,
+    "ast_hash": "ed894398b93388a33aa4222188f8ac53",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/visualizer/src/components/FilterPanel.tsx": {
+    "mtime": 1780600750.460611,
+    "ast_hash": "67de1de42490267229cf502b3ab6aa48",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/visualizer/src/components/MapView.tsx": {
+    "mtime": 1780600750.4536119,
+    "ast_hash": "117411360ff1e60a4d7b3696f741b1b6",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/visualizer/src/components/VehicleDetail.tsx": {
+    "mtime": 1780600750.4534714,
+    "ast_hash": "55927447abf690e3fb0f0596f84cb3e0",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/visualizer/src/components/VehicleTable.tsx": {
+    "mtime": 1780600750.4535472,
+    "ast_hash": "1b40500216061b38b72a16454a32efbd",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/visualizer/src/hooks/useAnnotations.ts": {
+    "mtime": 1780600750.4534063,
+    "ast_hash": "e4c161278ff818866fa630afc43d078a",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/visualizer/src/hooks/useDebouncedAutoSave.ts": {
+    "mtime": 1780600750.4534247,
+    "ast_hash": "69c2db614d1d1e18378e0dd5073ee498",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/visualizer/src/hooks/useGeocoder.ts": {
+    "mtime": 1776569203.0610833,
+    "ast_hash": "4e0ab97a13327444b593125d71b63cd7",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/visualizer/src/hooks/usePersistedFilters.ts": {
+    "mtime": 1780600750.4533858,
+    "ast_hash": "195990dc1a572e4c12be6b4eda93f596",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/visualizer/src/hooks/useVehicles.ts": {
+    "mtime": 1780600750.4535677,
+    "ast_hash": "7a85af406ef160bdb6e06ebf7e5ace73",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/visualizer/src/main.tsx": {
+    "mtime": 1771534176.623148,
+    "ast_hash": "787e5a07efeb2bf6209d5937195f2f68",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/visualizer/src/types.ts": {
+    "mtime": 1780600750.4535887,
+    "ast_hash": "5cb1e32ada983c4d528d5133351ff40c",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/visualizer/src/utils/leasehackr.ts": {
+    "mtime": 1780600750.453496,
+    "ast_hash": "804055b9330b1369a5fee7cd7f624894",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/visualizer/sync-data.sh": {
+    "mtime": 1771534181.1646357,
+    "ast_hash": "3206f72de45fccfa474106c3dc3a5df3",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/visualizer/tailwind.config.js": {
+    "mtime": 1771534031.6279402,
+    "ast_hash": "55a8129bc57ed5a6ff9609120346c912",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/visualizer/tsconfig.app.json": {
+    "mtime": 1771533922.5309477,
+    "ast_hash": "06fed9d2d293837c0571529eaae7204a",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/visualizer/tsconfig.json": {
+    "mtime": 1771533922.5315862,
+    "ast_hash": "a3d39fa780ebff65444de257f291ce6c",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/visualizer/tsconfig.node.json": {
+    "mtime": 1771533922.5321608,
+    "ast_hash": "eec85c9d7c6b599801557f1afd86672c",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/visualizer/vite.config.ts": {
+    "mtime": 1780600750.453579,
+    "ast_hash": "1597fffb6bdc4cc0172402a867de0d47",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/crawler/README.md": {
+    "mtime": 1780691634.4406533,
+    "ast_hash": "3780afe71c2e5b36abec61baf3898918",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/crawler/perplexity_dealers.txt": {
+    "mtime": 1771475222.2893,
+    "ast_hash": "6d882e3f48bc9ac4df1aae2f3b6e033d",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/visualizer/README.md": {
+    "mtime": 1776569037.9552515,
+    "ast_hash": "b3b418ba0e434306e15e7634d4aba30e",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/visualizer/index.html": {
+    "mtime": 1771533922.4811077,
+    "ast_hash": "19b300b46d2c2219099ef536c1e51251",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/crawler/cars_com_x7.json": {
+    "mtime": 1780691058.1949568,
+    "ast_hash": "797f242b94ef2b2e6e3dfc9571f40a84",
+    "semantic_hash": ""
+  },
+  "/Users/ion.caza/git/bmw-v2/crawler/cars_com_xm.json": {
+    "mtime": 1780691606.1317575,
+    "ast_hash": "339f2562d16f347e185df8c4161be9f9",
+    "semantic_hash": ""
+  }
+}

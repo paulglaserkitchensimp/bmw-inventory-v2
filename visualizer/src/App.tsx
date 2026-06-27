@@ -2,24 +2,27 @@ import { useState, useMemo } from 'react'
 import { useVehicles, applyFilters } from './hooks/useVehicles'
 import { useGeocoder } from './hooks/useGeocoder'
 import { useAnnotations } from './hooks/useAnnotations'
+import { usePersistedFilters } from './hooks/usePersistedFilters'
 import FilterPanel from './components/FilterPanel'
 import VehicleTable from './components/VehicleTable'
 import MapView from './components/MapView'
 import VehicleDetail from './components/VehicleDetail'
-import type { Filters, Vehicle } from './types'
-import { DEFAULT_FILTERS } from './types'
+import type { Vehicle } from './types'
 
 type ViewMode = 'table' | 'map' | 'split'
 
 export default function App() {
   const { vehicles, loading, error } = useVehicles()
   const geoMap = useGeocoder(vehicles)
-  const { annotations, cycleTag, setTag, setComment } = useAnnotations()
-  const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS)
+  const { annotations, cycleTag, setTag, setComment, setLeasehackrUrl, setListingUrl } = useAnnotations()
+  const [filters, setFilters] = usePersistedFilters()
   const [selected, setSelected] = useState<Vehicle | null>(null)
   const [view, setView] = useState<ViewMode>('split')
 
-  const filtered = useMemo(() => applyFilters(vehicles, filters), [vehicles, filters])
+  const filtered = useMemo(
+    () => applyFilters(vehicles, filters, annotations),
+    [vehicles, filters, annotations],
+  )
 
   if (loading) return (
     <div className="h-screen flex items-center justify-center bg-gray-50">
@@ -80,6 +83,7 @@ export default function App() {
                 annotations={annotations}
                 onCycleTag={cycleTag}
                 onSetComment={setComment}
+                geoMap={geoMap}
               />
             </div>
           )}
@@ -92,20 +96,26 @@ export default function App() {
                 geoMap={geoMap}
                 selected={selected}
                 onSelect={v => setSelected(prev => prev?.vin === v.vin ? null : v)}
+                annotations={annotations}
               />
             </div>
           )}
         </main>
       </div>
 
-      {/* Side drawer for selected vehicle */}
+      {/* Side drawer for selected vehicle.
+          `key` forces a remount when the user picks a different row so local
+          draft state (notes, LH URL) re-initializes from the new annotation. */}
       {selected && (
         <VehicleDetail
+          key={selected.vin}
           vehicle={selected}
           onClose={() => setSelected(null)}
           annotations={annotations}
           onSetTag={setTag}
           onSetComment={setComment}
+          onSetLeasehackrUrl={setLeasehackrUrl}
+          onSetListingUrl={setListingUrl}
         />
       )}
     </div>

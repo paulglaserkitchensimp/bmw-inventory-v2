@@ -1,10 +1,34 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useMemo } from 'react'
 import type { Vehicle } from '../types'
 import type { AnnotationMap, Tag } from '../hooks/useAnnotations'
 import { TAG_META, nextTag } from '../hooks/useAnnotations'
+import type { GeoMap } from '../hooks/useGeocoder'
 
-type SortKey = 'odometer' | 'daysOnLot' | 'internetPrice' | 'year' | 'dealerState'
+type SortKey = 'distance' | 'odometer' | 'daysOnLot' | 'internetPrice' | 'year' | 'dealerState'
 type SortDir = 'asc' | 'desc'
+
+// Proximity sort origin — user's home area. Change these coords to recalibrate.
+// 48335 = Farmington Hills, MI
+export const ORIGIN_COORDS: [number, number] = [42.4828, -83.3767]
+export const ORIGIN_LABEL = '48335'
+
+function haversineMiles(a: [number, number], b: [number, number]): number {
+  const R = 3958.8
+  const toRad = (x: number) => (x * Math.PI) / 180
+  const dLat = toRad(b[0] - a[0])
+  const dLon = toRad(b[1] - a[1])
+  const lat1 = toRad(a[0])
+  const lat2 = toRad(b[0])
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2
+  return 2 * R * Math.asin(Math.sqrt(h))
+}
+
+function vehicleDistance(v: Vehicle, geoMap: GeoMap): number | null {
+  if (!v.dealerCity || !v.dealerState) return null
+  const coords = geoMap[`${v.dealerCity}, ${v.dealerState}`]
+  if (!coords) return null
+  return haversineMiles(ORIGIN_COORDS, coords)
+}
 
 const BADGE_COLORS: Record<string, string> = {
   '1own_great_black': 'bg-green-100 text-green-800',
@@ -115,8 +139,8 @@ function CommentCell({ vin, comment, onChange }: {
   return (
     <span
       onClick={startEdit}
-      title="Click to edit note"
-      className={`text-xs cursor-text rounded px-1 py-0.5 hover:bg-gray-100 transition-colors inline-block min-w-[48px] ${
+      title={comment || 'Click to edit note'}
+      className={`text-xs cursor-text rounded px-1 py-0.5 hover:bg-gray-100 transition-colors block truncate ${
         comment ? 'text-gray-700' : 'text-gray-300 italic'
       }`}
     >
@@ -132,12 +156,13 @@ interface Props {
   annotations: AnnotationMap
   onCycleTag: (vin: string) => void
   onSetComment: (vin: string, comment: string) => void
+  geoMap: GeoMap
 }
 
 export default function VehicleTable({
-  vehicles, onSelect, selected, annotations, onCycleTag, onSetComment,
+  vehicles, onSelect, selected, annotations, onCycleTag, onSetComment, geoMap,
 }: Props) {
-  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: 'odometer', dir: 'asc' })
+  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: 'distance', dir: 'asc' })
 
   function toggleSort(key: SortKey) {
     setSort(prev => prev.key === key
@@ -145,13 +170,38 @@ export default function VehicleTable({
       : { key, dir: 'asc' })
   }
 
-  const sorted = [...vehicles].sort((a, b) => {
-    const va = a[sort.key] ?? (sort.dir === 'asc' ? Infinity : -Infinity)
-    const vb = b[sort.key] ?? (sort.dir === 'asc' ? Infinity : -Infinity)
-    if (va < vb) return sort.dir === 'asc' ? -1 : 1
-    if (va > vb) return sort.dir === 'asc' ? 1 : -1
-    return 0
-  })
+  // Precompute distance per VIN so sort + render share one calculation.
+  const distanceByVin = useMemo(() => {
+    const m: Record<string, number | null> = {}
+    for (const v of vehicles) m[v.vin] = vehicleDistance(v, geoMap)
+    return m
+  }, [vehicles, geoMap])
+
+  const sorted = useMemo(() => {
+    const getKey = (v: Vehicle): number | string | null =>
+      sort.key === 'distance' ? distanceByVin[v.vin] : (v[sort.key] as number | string | null)
+
+    const cmp = (a: Vehicle, b: Vehicle) => {
+      const va = getKey(a) ?? (sort.dir === 'asc' ? Infinity : -Infinity)
+      const vb = getKey(b) ?? (sort.dir === 'asc' ? Infinity : -Infinity)
+      if (va < vb) return sort.dir === 'asc' ? -1 : 1
+      if (va > vb) return sort.dir === 'asc' ? 1 : -1
+      return 0
+    }
+
+    // Always pin terminal-rejected vehicles (pass + negotiated_pass +
+    // nonleasable_pass) to the bottom, then sort within each group.
+    const keep: Vehicle[] = []
+    const passed: Vehicle[] = []
+    for (const v of vehicles) {
+      const t = annotations[v.vin]?.tag
+      if (t === 'pass' || t === 'negotiated_pass' || t === 'nonleasable_pass') passed.push(v)
+      else keep.push(v)
+    }
+    keep.sort(cmp)
+    passed.sort(cmp)
+    return [...keep, ...passed]
+  }, [vehicles, sort, annotations, distanceByVin])
 
   return (
     <div className="overflow-auto flex-1">
@@ -161,6 +211,7 @@ export default function VehicleTable({
             <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">Tag</th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">Note</th>
             <SortHeader label="Year" col="year" sort={sort} onSort={toggleSort} />
+            <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">Model</th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">Trim</th>
             <SortHeader label="Miles" col="odometer" sort={sort} onSort={toggleSort} />
             <SortHeader label="Days" col="daysOnLot" sort={sort} onSort={toggleSort} />
@@ -169,6 +220,7 @@ export default function VehicleTable({
             <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Owners</th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Dealer</th>
             <SortHeader label="State" col="dealerState" sort={sort} onSort={toggleSort} />
+            <SortHeader label={`Dist (${ORIGIN_LABEL})`} col="distance" sort={sort} onSort={toggleSort} />
             <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Links</th>
           </tr>
         </thead>
@@ -184,15 +236,16 @@ export default function VehicleTable({
                 onClick={() => onSelect(v)}
                 className={`border-b border-gray-100 cursor-pointer transition-colors ${
                   isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'
-                }`}
+                } ${v.vdpStatus === 'not_found' ? 'opacity-50' : ''}`}
               >
                 <td className="px-3 py-2">
                   <TagPill vin={v.vin} tag={tag} onCycle={onCycleTag} />
                 </td>
-                <td className="px-3 py-2 max-w-[180px]">
+                <td className="px-3 py-2 max-w-[180px] overflow-hidden">
                   <CommentCell vin={v.vin} comment={comment} onChange={onSetComment} />
                 </td>
                 <td className="px-3 py-2 font-medium">{v.year}</td>
+                <td className="px-3 py-2 font-medium text-gray-700 whitespace-nowrap">{v.model ?? '—'}</td>
                 <td className="px-3 py-2 whitespace-nowrap">
                   <span className={`text-xs px-1.5 py-0.5 rounded ${v.certified ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-600'}`}>
                     {v.trim ?? '—'}
@@ -222,8 +275,13 @@ export default function VehicleTable({
                 </td>
                 <td className="px-3 py-2 max-w-[160px] truncate text-gray-700">{v.dealerName ?? '—'}</td>
                 <td className="px-3 py-2">{v.dealerState ?? '—'}</td>
+                <td className="px-3 py-2 tabular-nums text-gray-600">
+                  {distanceByVin[v.vin] != null
+                    ? `${Math.round(distanceByVin[v.vin]!).toLocaleString()} mi`
+                    : <span className="text-gray-300">—</span>}
+                </td>
                 <td className="px-3 py-2 whitespace-nowrap">
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 items-center">
                     {(v.resolvedLink || v.link) && (
                       <a href={v.resolvedLink ?? v.link ?? ''} target="_blank" rel="noreferrer"
                         onClick={e => e.stopPropagation()}
@@ -233,6 +291,18 @@ export default function VehicleTable({
                       <a href={v.carfaxUrl} target="_blank" rel="noreferrer"
                         onClick={e => e.stopPropagation()}
                         className="text-green-600 hover:underline text-xs">CarFax</a>
+                    )}
+                    {v.vdpStatus === 'not_found' && (
+                      <span
+                        title="Dealer page returned 404 — likely sold"
+                        className="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-medium"
+                      >404</span>
+                    )}
+                    {v.vdpStatus === 'blocked' && (
+                      <span
+                        title="Dealer page blocked our scraper — manual verification required"
+                        className="text-xs px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700 font-medium"
+                      >?</span>
                     )}
                   </div>
                 </td>

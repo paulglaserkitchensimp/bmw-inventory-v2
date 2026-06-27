@@ -221,6 +221,19 @@ VDP_HEADERS = {
 CFX_RE    = re.compile(r'https://www\.carfax\.com/vehiclehistory/ar20/[^\s"\'<>&]+')
 BADGE_RE  = re.compile(r'partnerstatic\.carfax\.com/img/valuebadge/(\w+)\.svg', re.IGNORECASE)
 OWNER_RE  = re.compile(r'(?:^|_)(\d+)own', re.IGNORECASE)   # matches 1own anywhere in slug
+TEL_RE    = re.compile(r'href=["\']tel:([^"\']+)["\']', re.IGNORECASE)
+
+
+def _normalize_phone(raw: str | None) -> str | None:
+    """Return a phone as '###-###-####', or None if unparseable."""
+    if not raw:
+        return None
+    digits = re.sub(r"\D", "", raw)
+    if len(digits) == 11 and digits.startswith("1"):
+        digits = digits[1:]
+    if len(digits) != 10:
+        return None
+    return f"{digits[0:3]}-{digits[3:6]}-{digits[6:10]}"
 
 
 def _parse_badge_slug(slug: str) -> dict:
@@ -238,7 +251,7 @@ def _parse_badge_slug(slug: str) -> dict:
 
 
 def _extract_vdp_signals(html: str) -> dict:
-    """Parse CarFax signals (signed URL + owner count badge) from raw VDP HTML."""
+    """Parse CarFax + contact signals (signed URL, owner count, phone) from raw VDP HTML."""
     out: dict = {}
     cfx = CFX_RE.search(html)
     if cfx:
@@ -249,6 +262,12 @@ def _extract_vdp_signals(html: str) -> dict:
             out.update(info)
             break
         out.setdefault("carfaxBadge", info["carfaxBadge"])
+    # First tel: link on the page — typically the dealer's main sales line.
+    for raw in TEL_RE.findall(html):
+        phone = _normalize_phone(raw)
+        if phone:
+            out["dealerPhone"] = phone
+            break
     return out
 
 
@@ -264,18 +283,31 @@ def _best_urls(v: dict) -> list[str]:
 
 
 def _extract_cfx_requests(v: dict) -> dict | None:
-    """Pass 1: fast requests-based fetch. Returns updated record or None on failure."""
-    for url in _best_urls(v):
+    """Pass 1: fast requests-based fetch.
+
+    Returns:
+      - record with signals + ``vdpStatus='ok'`` on HTTP 200
+      - record with ``vdpStatus='not_found'`` when every attempted URL returned
+        404 (listing almost certainly removed — skip browser retries)
+      - None on any other failure (timeout / 403 / Cloudflare challenge /
+        etc.); caller will retry via the browser passes
+    """
+    urls = _best_urls(v)
+    only_404 = bool(urls)   # stays True only if every tried URL returns 404
+    for url in urls:
         try:
             r = requests.get(url, headers=VDP_HEADERS, timeout=10, allow_redirects=True)
             if r.status_code == 200:
                 signals = _extract_vdp_signals(r.text)
-                return {**v, "resolvedLink": r.url, **signals}
-            if r.status_code == 404 and url == v.get("link") and v.get("vinLink"):
-                continue
+                if v.get("dealerPhone"):
+                    signals.pop("dealerPhone", None)   # prefer authoritative source (DDC)
+                return {**v, "resolvedLink": r.url, "vdpStatus": "ok", **signals}
+            if r.status_code != 404:
+                only_404 = False
         except Exception:
-            if url == v.get("link") and v.get("vinLink"):
-                continue
+            only_404 = False
+    if only_404:
+        return {**v, "vdpStatus": "not_found"}
     return None
 
 
@@ -407,12 +439,33 @@ def _page_result(page, v: dict) -> dict | None:
                 break
             badge_info = badge_info or info
 
-    # Fallback: regex over raw HTML
-    if not cfx_url:
-        m2 = CFX_RE.search(page.content())
-        cfx_url = m2.group(0) if m2 else None
+    # Dealer phone — first tel: link on the page
+    phone_hrefs: list[str] = page.evaluate("""
+        () => Array.from(
+                document.querySelectorAll('a[href^="tel:"]')
+              ).map(a => a.getAttribute('href').replace(/^tel:/i, ''))
+    """)
+    phone = None
+    for raw in phone_hrefs:
+        phone = _normalize_phone(raw)
+        if phone:
+            break
 
-    return {**v, "resolvedLink": page.url, "carfaxUrl": cfx_url, **badge_info}
+    # Fallback: regex over raw HTML
+    html = page.content()
+    if not cfx_url:
+        m2 = CFX_RE.search(html)
+        cfx_url = m2.group(0) if m2 else None
+    if not phone:
+        for raw in TEL_RE.findall(html):
+            phone = _normalize_phone(raw)
+            if phone:
+                break
+
+    out = {**v, "resolvedLink": page.url, "carfaxUrl": cfx_url, "vdpStatus": "ok", **badge_info}
+    if phone and not v.get("dealerPhone"):
+        out["dealerPhone"] = phone
+    return out
 
 
 _PW_TIMEOUT  = 15000   # ms — per page.goto in browser passes
@@ -520,9 +573,11 @@ def fetch_details(vehicles: list[dict], workers: int = 8) -> list[dict]:
             else:
                 needs_browser.append(idx)
 
-    pass1_ok  = sum(1 for r in results if r is not None)
-    pass1_cfx = sum(1 for r in results if r and r.get("carfaxUrl"))
+    pass1_ok    = sum(1 for r in results if r and r.get("vdpStatus") == "ok")
+    pass1_404   = sum(1 for r in results if r and r.get("vdpStatus") == "not_found")
+    pass1_cfx   = sum(1 for r in results if r and r.get("carfaxUrl"))
     print(f"  Pass 1 (requests):   {pass1_ok}/{len(vehicles)} reached, "
+          f"{pass1_404} not-found (likely sold), "
           f"{pass1_cfx} CarFax URLs")
 
     if not needs_browser:
@@ -580,13 +635,17 @@ def fetch_details(vehicles: list[dict], workers: int = 8) -> list[dict]:
               "(pip install playwright playwright-stealth && "
               "python -m playwright install chrome)")
 
-    # Fill any remaining blocked vehicles with their original records
+    # Fill any remaining blocked vehicles with their original records, marked
+    # so the UI can flag them as "couldn't verify — needs manual research".
     for idx in still_blocked:
         if results[idx] is None:
-            results[idx] = vehicles[idx]
+            results[idx] = {**vehicles[idx], "vdpStatus": "blocked"}
 
     total_cfx = sum(1 for r in results if r and r.get("carfaxUrl"))
-    print(f"  Total CarFax URLs: {total_cfx}/{len(vehicles)}")
+    total_404 = sum(1 for r in results if r and r.get("vdpStatus") == "not_found")
+    total_blk = sum(1 for r in results if r and r.get("vdpStatus") == "blocked")
+    print(f"  Total CarFax URLs: {total_cfx}/{len(vehicles)}  "
+          f"({total_404} likely-sold, {total_blk} unreachable)")
     return [r if r is not None else vehicles[i] for i, r in enumerate(results)]
 
 
@@ -634,29 +693,52 @@ DDC_HEADERS = {
 # ──────────────────────────────────────────────────────────────────────────────
 # DDC search  (single call via bmwgroup OEM account)
 # ──────────────────────────────────────────────────────────────────────────────
+# DDC's `pageAlias` is the single biggest knob: each page corresponds to a
+# different inventory partition on the bmwgroup site. AUTO_USED returns used
+# vehicles only; DEFAULT_AUTO_NEW returns new vehicles only. There is no
+# combined "ALL" page that returns both, so when the caller wants both we
+# fire one call per page and union the results.
+DDC_PAGE_ALIAS = {
+    "used": (
+        "INVENTORY_LISTING_TARGETED_RESULTS_AUTO_USED",
+        "v9_INVENTORY_LISTING_TARGETED_RESULTS_AUTO_USED_V1_1",
+    ),
+    "new": (
+        "INVENTORY_LISTING_DEFAULT_AUTO_NEW",
+        "v9_INVENTORY_LISTING_DEFAULT_AUTO_NEW_V1_1",
+    ),
+}
+
+
 def _search_ddc_single(make: str, model: str, year: int | None, trim: str | None,
-                       vehicle_type: str) -> list[dict]:
-    """Single DDC query for one year (or no year filter if year is None)."""
+                       condition: str) -> list[dict]:
+    """Single DDC query for one (year, condition) pair.
+
+    `condition` must be 'new' or 'used' — it selects the DDC pageAlias.
+    Pass `year=None` to skip the year filter. The returned records have
+    their ``type`` field set to `condition` so the downstream merge can
+    distinguish them even when the dealer doesn't echo the type back."""
+    page_alias, page_id = DDC_PAGE_ALIAS[condition]
+
     inv_params: dict = {"make": make, "model": model}
     if year is not None:
         inv_params["year"] = str(year)
     if trim:
         inv_params["trim"] = trim
-    if vehicle_type in ("new", "used"):
-        inv_params["compositeType"] = vehicle_type
+    inv_params["compositeType"] = condition
 
     payload = {
         "siteId": "bmwgroup",
         "locale": "en_US",
         "device": "DESKTOP",
-        "pageAlias": "INVENTORY_LISTING_TARGETED_RESULTS_AUTO_USED",
-        "pageId": "v9_INVENTORY_LISTING_TARGETED_RESULTS_AUTO_USED_V1_1",
+        "pageAlias": page_alias,
+        "pageId": page_id,
         "windowId": "inventory-data-bus2",
         "widgetName": "ws-inv-data",
         "inventoryParameters": inv_params,
         "preferences": {
             "pageSize": "500",
-            "listing.config.id": "auto-used",
+            "listing.config.id": f"auto-{condition}",
             "removeEmptyFacets": "true",
             "removeEmptyConstraints": "true",
             "required.display.sets": "TITLE,IMAGE_ALT,IMAGE_TITLE,PRICE,FEATURED_ITEMS,CALLOUT,LISTING,HIGHLIGHTED_ATTRIBUTES",
@@ -679,7 +761,7 @@ def _search_ddc_single(make: str, model: str, year: int | None, trim: str | None
     raw_accounts: dict = data.get("accounts", {})
     vehicles = data.get("inventory", [])
     total = data.get("pageInfo", {}).get("totalCount", 0)
-    print(f"  DDC: {total} vehicles from bmwgroup ({len(raw_accounts)} dealers)")
+    print(f"  DDC [{condition}]: {total} vehicles from bmwgroup ({len(raw_accounts)} dealers)")
 
     results = []
     for v in vehicles:
@@ -705,7 +787,7 @@ def _search_ddc_single(make: str, model: str, year: int | None, trim: str | None
         inventory_date = v.get("inventoryDate")
         vin       = v.get("vin")
         certified = bool(v.get("certified"))
-        vtype     = v.get("type") or vehicle_type
+        vtype     = v.get("type") or condition
         results.append({
             "vin":          vin,
             "stockNumber":  v.get("stockNumber"),
@@ -725,6 +807,7 @@ def _search_ddc_single(make: str, model: str, year: int | None, trim: str | None
             "dealerCity":   addr.get("city") or v.get("accountCity"),
             "dealerState":  addr.get("state") or v.get("accountState"),
             "dealerUrl":    dealer_url,
+            "dealerPhone":  _normalize_phone(account.get("phone")),
             "platform":     "dealercom",
             "type":         vtype,
             "link":         full_link,
@@ -738,16 +821,30 @@ def _search_ddc_single(make: str, model: str, year: int | None, trim: str | None
 
 def search_ddc(make: str, model: str, years: list[int] | None, trim: str | None,
                vehicle_type: str) -> list[dict]:
-    """Multi-year wrapper: one DDC call per year to avoid 500 on list payloads."""
+    """Multi-year, multi-condition wrapper: one DDC call per (year, condition).
+
+    DDC's bmwgroup site exposes ``AUTO_USED`` and ``AUTO_NEW`` as separate
+    pages — there's no combined endpoint — so when the caller wants both
+    we have to fire one call per page. This matters especially for models
+    like the XM where the vast majority of inventory is new: querying only
+    the USED page returned ~21 vehicles, while NEW + USED returns ~240.
+    """
+    conditions = ["new", "used"] if vehicle_type == "all" else [vehicle_type]
     year_list = years if years else [None]
     all_results: list[dict] = []
     seen: set[str] = set()
     for yr in year_list:
-        for rec in _search_ddc_single(make, model, yr, trim, vehicle_type):
-            key = rec.get("vin") or f"{rec.get('stockNumber')}-{rec.get('dealerName')}"
-            if key not in seen:
-                seen.add(key)
-                all_results.append(rec)
+        for cond in conditions:
+            try:
+                batch = _search_ddc_single(make, model, yr, trim, cond)
+            except Exception as e:
+                print(f"  DDC [{cond}] error for year={yr}: {e}")
+                continue
+            for rec in batch:
+                key = rec.get("vin") or f"{rec.get('stockNumber')}-{rec.get('dealerName')}"
+                if key not in seen:
+                    seen.add(key)
+                    all_results.append(rec)
     return all_results
 
 
@@ -861,6 +958,7 @@ def search_di(make: str, model: str, years: list[int] | None, trim: str | None,
                     "dealerCity":   dealer_info.get("city"),
                     "dealerState":  dealer_info.get("state"),
                     "dealerUrl":    dealer_website,
+                    "dealerPhone":  None,   # filled in by VDP pass if available
                     "platform":     "dealerinspire",
                     "type":         hit.get("type") or "used",
                     "link":         full_link,
@@ -891,6 +989,36 @@ def _parse_years(year_str: str | None) -> list[int] | None:
         return [int(year_str)]
     except ValueError:
         return None
+
+
+def _parse_searches(search_specs: list[str] | None,
+                    fallback_model: str,
+                    fallback_trim: str | None) -> list[tuple[str, str | None]]:
+    """Return list of (model, trim_or_None) pairs to sweep.
+
+    Each --search spec is ``MODEL`` or ``MODEL:TRIM``; an empty trim (or no
+    colon) means "any trim of that model". Whitespace is stripped so quoting
+    is forgiving (e.g. ``--search "X7: M60i"``).
+
+    Falls back to a single (--model, --trim) pair when --search is absent so
+    the legacy single-search invocation keeps working unchanged.
+    """
+    if not search_specs:
+        return [(fallback_model, fallback_trim or None)]
+
+    pairs: list[tuple[str, str | None]] = []
+    for spec in search_specs:
+        spec = spec.strip()
+        if not spec:
+            continue
+        model, sep, trim = spec.partition(":")
+        model = model.strip()
+        if not model:
+            continue
+        # Treat both "X7" (no colon) and "X7:" (empty trim) as "any trim".
+        trim_val: str | None = trim.strip() if sep else ""
+        pairs.append((model, trim_val or None))
+    return pairs or [(fallback_model, fallback_trim or None)]
 
 
 def fetch_carfax_history(vehicles: list[dict]) -> list[dict]:
@@ -1095,11 +1223,16 @@ def main() -> None:
     )
     parser.add_argument("--make",          default="BMW")
     parser.add_argument("--model",         default="X7",
-                        help="Model name (default: X7)")
+                        help="Model name (default: X7). Ignored if --search is given.")
     parser.add_argument("--year",          default="2025-2026",
                         help="Single year or range: 2025 | 2025-2026 (default: 2025-2026)")
     parser.add_argument("--trim",          default="M60i",
-                        help="Trim level (default: M60i)")
+                        help="Trim level (default: M60i). Ignored if --search is given.")
+    parser.add_argument("--search",        action="append", metavar="MODEL[:TRIM]",
+                        help="Sweep a (model, trim) pair. Repeatable; e.g. "
+                             "--search X7:M60i --search X7:xDrive40i --search X5:M60i "
+                             "--search XM. Omit ':TRIM' (or leave blank) to match any "
+                             "trim of that model. When set, --model/--trim are ignored.")
     parser.add_argument("--min-miles",     type=int, default=200,
                         help="Minimum odometer (default: 200)")
     parser.add_argument("--max-miles",     type=int, default=15000,
@@ -1145,32 +1278,35 @@ def main() -> None:
         ensure_chrome_debug()
 
     years = _parse_years(args.year)
+    searches = _parse_searches(args.search, args.model, args.trim)
 
     year_label = args.year or "any year"
     miles_label = f"{args.min_miles:,}–{args.max_miles:,} mi" if (args.min_miles or args.max_miles) else "any miles"
-    print(f"\nSearching: {year_label} {args.make} {args.model}"
-          f"{' ' + args.trim if args.trim else ''}"
-          f"  {miles_label}  type={args.type}\n")
+    sweep_label = ", ".join(f"{m}{' ' + t if t else ''}" for m, t in searches)
+    print(f"\nSearching: {year_label} {args.make} [{sweep_label}]  "
+          f"{miles_label}  type={args.type}\n")
 
     all_results: list[dict] = []
-
-    # --- DDC ---
-    print("[ Dealer.com ]")
     ddc_type = "all" if args.type == "all" else args.type
-    try:
-        ddc = search_ddc(args.make, args.model, years, args.trim, ddc_type)
-        all_results.extend(ddc)
-    except Exception as e:
-        print(f"  DDC error: {e}")
 
-    # --- DI ---
-    print("\n[ DealerInspire / Algolia ]")
-    try:
-        di = search_di(args.make, args.model, years, args.trim,
-                       args.min_miles, args.max_miles)
-        all_results.extend(di)
-    except Exception as e:
-        print(f"  DI error: {e}")
+    for model, trim in searches:
+        label = f"{model}{' ' + trim if trim else ''}"
+
+        print(f"[ Dealer.com — {label} ]")
+        try:
+            ddc = search_ddc(args.make, model, years, trim, ddc_type)
+            all_results.extend(ddc)
+        except Exception as e:
+            print(f"  DDC error: {e}")
+
+        print(f"\n[ DealerInspire / Algolia — {label} ]")
+        try:
+            di = search_di(args.make, model, years, trim,
+                           args.min_miles, args.max_miles)
+            all_results.extend(di)
+        except Exception as e:
+            print(f"  DI error: {e}")
+        print()
 
     # Post-filter miles (DDC odometer comes from trackingAttributes, filtered here)
     before = len(all_results)

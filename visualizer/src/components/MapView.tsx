@@ -3,6 +3,7 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import type { Vehicle } from '../types'
 import type { GeoMap } from '../hooks/useGeocoder'
+import type { AnnotationMap } from '../hooks/useAnnotations'
 
 // Fix default leaflet marker icons (broken in Vite)
 import iconUrl from 'leaflet/dist/images/marker-icon.png'
@@ -35,12 +36,16 @@ interface Props {
   geoMap: GeoMap
   selected: Vehicle | null
   onSelect: (v: Vehicle) => void
+  annotations: AnnotationMap
 }
 
-export default function MapView({ vehicles, geoMap, selected, onSelect }: Props) {
+export default function MapView({ vehicles, geoMap, selected, onSelect, annotations }: Props) {
+  // Hide pass-tagged vehicles entirely from the map.
+  const visible = vehicles.filter(v => annotations[v.vin]?.tag !== 'pass')
+
   // Group vehicles by dealer city+state
   const groups = new Map<string, DealerGroup>()
-  for (const v of vehicles) {
+  for (const v of visible) {
     if (!v.dealerCity || !v.dealerState) continue
     const key = `${v.dealerCity}, ${v.dealerState}`
     const coords = geoMap[key]
@@ -57,7 +62,7 @@ export default function MapView({ vehicles, geoMap, selected, onSelect }: Props)
   const selectedCoords = selectedKey ? geoMap[selectedKey] ?? null : null
 
   const geocoded = groups.size
-  const total    = new Set(vehicles.filter(v => v.dealerCity && v.dealerState).map(v => `${v.dealerCity}, ${v.dealerState}`)).size
+  const total    = new Set(visible.filter(v => v.dealerCity && v.dealerState).map(v => `${v.dealerCity}, ${v.dealerState}`)).size
 
   return (
     <div className="relative w-full h-full">

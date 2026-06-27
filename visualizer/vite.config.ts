@@ -87,7 +87,42 @@ function geocodePlugin(): Plugin {
   }
 }
 
+type AnnotationEntry = {
+  tag?: string | null
+  comment?: string
+  leasehackrUrl?: string
+}
+
+function isEmptyEntry(e: unknown): boolean {
+  if (!e || typeof e !== 'object') return true
+  const { tag, comment, leasehackrUrl } = e as AnnotationEntry
+  return !tag && !comment && !leasehackrUrl
+}
+
+/**
+ * Annotations API.
+ *
+ *   GET  /api/annotations        → whole map (for initial load + poll-based sync)
+ *   POST /api/annotations/:vin   → merge a single VIN into the on-disk map
+ *                                   (body = the entry; empty/missing fields
+ *                                   cause the VIN to be removed entirely)
+ *
+ * Per-VIN writes avoid the lost-update race that full-map POSTs caused across
+ * multiple open browsers: browser A saving VIN X can no longer clobber browser
+ * B's unrelated edit on VIN Y, since the server reads the latest file, merges
+ * just the one VIN, and writes it back.
+ *
+ * Writes are funnelled through a Promise queue so concurrent POSTs on the same
+ * process don't interleave their read → merge → write cycles.
+ */
 function annotationsPlugin(): Plugin {
+  let writeQueue: Promise<void> = Promise.resolve()
+  const enqueueWrite = (fn: () => void): Promise<void> => {
+    const next = writeQueue.then(fn, fn)
+    writeQueue = next.catch(() => {})
+    return next
+  }
+
   return {
     name: 'annotations-api',
     configureServer(server) {
@@ -95,7 +130,13 @@ function annotationsPlugin(): Plugin {
         res.setHeader('Access-Control-Allow-Origin', '*')
         res.setHeader('Content-Type', 'application/json')
 
-        if (req.method === 'GET') {
+        // Vite/Connect strips the '/api/annotations' mount prefix before handing
+        // us the request, so req.url is '/' for the whole-map endpoint and
+        // '/<vin>' for per-VIN writes.
+        const subPath = (req.url ?? '/').split('?')[0]
+        const vin = subPath.replace(/^\/+/, '').trim()
+
+        if (req.method === 'GET' && !vin) {
           try {
             const data = fs.existsSync(ANNOTATIONS_FILE)
               ? fs.readFileSync(ANNOTATIONS_FILE, 'utf-8')
@@ -104,28 +145,43 @@ function annotationsPlugin(): Plugin {
           } catch {
             res.end('{}')
           }
+          return
+        }
 
-        } else if (req.method === 'POST') {
+        if (req.method === 'POST' && vin) {
           let body = ''
           req.on('data', chunk => { body += chunk })
-          req.on('end', () => {
+          req.on('end', async () => {
+            let parsed: unknown
             try {
-              // Validate JSON before writing
-              JSON.parse(body)
-              fs.mkdirSync(path.dirname(ANNOTATIONS_FILE), { recursive: true })
-              fs.writeFileSync(ANNOTATIONS_FILE, body, 'utf-8')
-              res.statusCode = 200
-              res.end('{"ok":true}')
+              parsed = body ? JSON.parse(body) : null
             } catch {
               res.statusCode = 400
-              res.end('{"ok":false}')
+              res.end('{"ok":false,"error":"invalid json"}')
+              return
+            }
+            try {
+              await enqueueWrite(() => {
+                const current = readJsonSafe<Record<string, AnnotationEntry>>(ANNOTATIONS_FILE, {})
+                if (isEmptyEntry(parsed)) {
+                  delete current[vin]
+                } else {
+                  current[vin] = parsed as AnnotationEntry
+                }
+                writeJson(ANNOTATIONS_FILE, current)
+              })
+              res.statusCode = 200
+              res.end('{"ok":true}')
+            } catch (e) {
+              res.statusCode = 500
+              res.end(JSON.stringify({ ok: false, error: String(e) }))
             }
           })
-
-        } else {
-          res.statusCode = 405
-          res.end('{}')
+          return
         }
+
+        res.statusCode = 405
+        res.end('{}')
       })
     },
   }
