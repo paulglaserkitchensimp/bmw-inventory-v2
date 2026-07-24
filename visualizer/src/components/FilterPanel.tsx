@@ -177,7 +177,7 @@ export default function FilterPanel({ filters, onChange, vehicles }: Props) {
           <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Search</label>
           <input
             type="text"
-            placeholder="VIN, dealer, color…"
+            placeholder="VIN, dealer, color, notes…"
             value={filters.search}
             onChange={e => onChange({ ...filters, search: e.target.value })}
             className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:border-blue-400"

@@ -33,7 +33,7 @@ YEAR_RANGE="2025-2026"
 
 AT_BASE='https://www.autotrader.com/cars-for-sale/all-cars/bmw'
 AT_QS="mileage=15000&searchRadius=0&startYear=2025&endYear=2026"
-CARS_BASE='https://www.cars.com/shopping/results/?mileage_min=60&mileage_max=15000&zip=48335&maximum_distance=9999&year_min=2025&year_max=2026&makes[]=bmw&sort=best_match_desc'
+CARS_BASE='https://www.cars.com/shopping/results/?mileage_min=60&mileage_max=15000&zip=48226&maximum_distance=9999&year_min=2025&year_max=2026&makes[]=bmw&sort=best_match_desc'
 
 usage() {
   sed -n '2,16p' "$0" | sed 's/^# \?//'
@@ -111,7 +111,7 @@ if ! $SKIP_AUTOTRADER; then
   at_xm_cmd=(
     uv run crawl_autotrader.py
     --max-pages 30
-    --url "${AT_BASE}/xm/livonia-mi?${AT_QS}"
+    --url "${AT_BASE}/xm/detroit-mi?${AT_QS}"
     --min-miles "$MIN_MILES"
     --max-miles "$MAX_MILES"
     --out "$AT_XM_OUT"
@@ -125,7 +125,7 @@ if ! $SKIP_AUTOTRADER; then
   at_x7_cmd=(
     uv run crawl_autotrader.py
     --max-pages 30
-    --url "${AT_BASE}/x7/m60i/livonia-mi?${AT_QS}"
+    --url "${AT_BASE}/x7/m60i/detroit-mi?${AT_QS}"
     --min-miles "$MIN_MILES"
     --max-miles "$MAX_MILES"
     --out "$AT_X7_OUT"

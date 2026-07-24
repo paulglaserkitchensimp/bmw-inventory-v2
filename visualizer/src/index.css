@@ -7,3 +7,120 @@
   height: 100%;
   width: 100%;
 }
+
+/* ────────────────────────────────────────────────────────────────────────────
+   Dark mode
+   The app composes many Tailwind color classes at runtime (tag pills, CarFax
+   badges, tri-state chips), so instead of sprinkling `dark:` variants through
+   every class string we remap the closed set of utilities the app actually
+   uses under `.dark`. Two-class selectors beat Tailwind's single-class
+   utilities on specificity, so no !important is needed except for hovers.
+   ──────────────────────────────────────────────────────────────────────────── */
+
+.dark {
+  color-scheme: dark; /* native inputs, scrollbars */
+}
+
+/* ── Surfaces ── */
+.dark .bg-white        { background-color: #1c2431; }
+.dark .bg-white\/90    { background-color: rgb(28 36 49 / 0.9); }
+.dark .bg-gray-50      { background-color: #161d28; }
+.dark .bg-gray-100     { background-color: #27303f; }
+.dark .bg-gray-200     { background-color: #323d4f; }
+.dark .bg-blue-50      { background-color: #1e3a5f; }
+.dark .bg-blue-100     { background-color: rgb(59 130 246 / 0.22); }
+.dark .bg-red-50       { background-color: rgb(239 68 68 / 0.14); }
+.dark .bg-red-100      { background-color: rgb(239 68 68 / 0.22); }
+.dark .bg-green-50     { background-color: rgb(34 197 94 / 0.12); }
+.dark .bg-green-100    { background-color: rgb(34 197 94 / 0.2); }
+.dark .bg-yellow-50    { background-color: rgb(234 179 8 / 0.12); }
+.dark .bg-yellow-100   { background-color: rgb(234 179 8 / 0.2); }
+.dark .bg-indigo-100   { background-color: rgb(99 102 241 / 0.25); }
+.dark .bg-orange-100   { background-color: rgb(249 115 22 / 0.2); }
+.dark .bg-purple-100   { background-color: rgb(168 85 247 / 0.22); }
+.dark .bg-rose-100     { background-color: rgb(244 63 94 / 0.2); }
+.dark .bg-stone-100    { background-color: rgb(168 162 158 / 0.18); }
+
+/* ── Borders ── */
+.dark .border-gray-50  { border-color: #232c3a; }
+.dark .border-gray-100 { border-color: #27303f; }
+.dark .border-gray-200 { border-color: #323d4f; }
+.dark .border-gray-300 { border-color: #3e4a5e; }
+.dark .border-gray-400 { border-color: #4d5b72; }
+.dark .border-blue-300  { border-color: #2d5c9e; }
+.dark .border-blue-400  { border-color: #3b82f6; }
+.dark .border-green-300 { border-color: rgb(34 197 94 / 0.45); }
+.dark .border-yellow-200,
+.dark .border-yellow-300 { border-color: rgb(234 179 8 / 0.45); }
+.dark .border-red-200    { border-color: rgb(239 68 68 / 0.45); }
+.dark .border-orange-300 { border-color: rgb(249 115 22 / 0.45); }
+.dark .border-purple-300 { border-color: rgb(168 85 247 / 0.45); }
+.dark .border-rose-300   { border-color: rgb(244 63 94 / 0.45); }
+.dark .border-stone-300  { border-color: rgb(168 162 158 / 0.4); }
+
+/* ── Text: invert the gray scale ── */
+.dark .text-gray-300 { color: #4d5b72; }
+.dark .text-gray-400 { color: #8494ab; }
+.dark .text-gray-500 { color: #9aa9be; }
+.dark .text-gray-600 { color: #b3c0d1; }
+.dark .text-gray-700 { color: #c6d0dd; }
+.dark .text-gray-800 { color: #dde4ec; }
+.dark .text-gray-900 { color: #eef2f6; }
+
+/* ── Text: accent colors get lighter shades for contrast ── */
+.dark .text-blue-500  { color: #60a5fa; }
+.dark .text-blue-600  { color: #7ab5fb; }
+.dark .text-blue-700  { color: #93c5fd; }
+.dark .text-blue-800  { color: #a8cffd; }
+.dark .text-green-600 { color: #4ade80; }
+.dark .text-green-800 { color: #86efac; }
+.dark .text-yellow-700,
+.dark .text-yellow-800 { color: #fbbf24; }
+.dark .text-red-500   { color: #f87171; }
+.dark .text-red-600   { color: #f88; }
+.dark .text-red-700,
+.dark .text-red-800   { color: #fca5a5; }
+.dark .text-orange-600 { color: #fb923c; }
+.dark .text-orange-800 { color: #fdba74; }
+.dark .text-purple-800 { color: #d8b4fe; }
+.dark .text-indigo-600,
+.dark .text-indigo-700 { color: #a5b4fc; }
+.dark .text-rose-800   { color: #fda4af; }
+.dark .text-stone-700  { color: #d6d3d1; }
+
+/* ── Hover states (need the pseudo-class to keep specificity parity) ── */
+.dark .hover\:bg-gray-50:hover   { background-color: #232c3a; }
+.dark .hover\:bg-gray-100:hover  { background-color: #323d4f; }
+.dark .hover\:bg-blue-50:hover   { background-color: #1e3a5f; }
+.dark .hover\:text-gray-600:hover { color: #b3c0d1; }
+.dark .hover\:text-gray-700:hover { color: #c6d0dd; }
+.dark .hover\:text-gray-800:hover { color: #dde4ec; }
+.dark .hover\:border-gray-400:hover { border-color: #4d5b72; }
+
+/* ── Misc chrome ── */
+.dark .shadow,
+.dark .shadow-xl { --tw-shadow-color: rgb(0 0 0 / 0.5); }
+.dark ::placeholder { color: #64748b; }
+.dark input,
+.dark textarea { background-color: #161d28; }
+
+/* ── Leaflet ── */
+/* Classic dark-map trick: invert + hue-rotate the raster tiles. */
+.dark .leaflet-tile {
+  filter: invert(1) hue-rotate(180deg) brightness(0.9) contrast(0.9);
+}
+.dark .leaflet-popup-content-wrapper,
+.dark .leaflet-popup-tip {
+  background: #1c2431;
+  color: #dde4ec;
+}
+.dark .leaflet-control-zoom a {
+  background: #1c2431;
+  color: #dde4ec;
+  border-color: #3e4a5e;
+}
+.dark .leaflet-control-attribution {
+  background: rgb(28 36 49 / 0.8);
+  color: #8494ab;
+}
+.dark .leaflet-control-attribution a { color: #7ab5fb; }

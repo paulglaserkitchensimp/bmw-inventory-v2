@@ -28,8 +28,8 @@ EXCLUDE_STATES="CA"
 MIN_MILES=60
 MAX_MILES=15000
 
-AUTOTRADER_URL='https://www.autotrader.com/cars-for-sale/all-cars/bmw/xm/livonia-mi?mileage=15000&searchRadius=0&startYear=2025&endYear=2025'
-CARS_COM_URL='https://www.cars.com/shopping/results/?mileage_min=60&mileage_max=15000&models[]=bmw-xm&zip=48335&maximum_distance=9999&year_min=2025&year_max=2025&makes[]=bmw&sort=best_match_desc'
+AUTOTRADER_URL='https://www.autotrader.com/cars-for-sale/all-cars/bmw/xm/detroit-mi?mileage=15000&searchRadius=0&startYear=2025&endYear=2025'
+CARS_COM_URL='https://www.cars.com/shopping/results/?mileage_min=60&mileage_max=15000&models[]=bmw-xm&zip=48226&maximum_distance=9999&year_min=2025&year_max=2025&makes[]=bmw&sort=best_match_desc'
 
 usage() {
   sed -n '2,14p' "$0" | sed 's/^# \?//'

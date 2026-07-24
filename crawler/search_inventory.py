@@ -1,9 +1,11 @@
 """
 search_inventory.py – Search for a specific vehicle across ALL US BMW dealers.
 
-Covers two platforms in just a handful of API calls:
-  • Dealer.com   : one call per year to siteId=bmwgroup (~275 DDC dealers)
-  • DealerInspire: one batch call per Algolia app      (~44 DI dealers)
+Covers four dealer-website platforms (per master_dealers.json):
+  • Dealer.com    : one call per year to siteId=bmwgroup + 14 standalone sites
+  • DealerInspire : one Cars Commerce API call per dealer (~119, via cc_ccid)
+  • DealerOn      : one Cosmos SRP API call per dealer (~30, via do_dealer_id)
+  • Team Velocity : SSR dataLayer parse per dealer (~22)
 
 After collecting inventory, each dealer VDP is fetched concurrently (8 threads)
 to extract the signed CarFax URL that lives in the page HTML.  Use --skip-fetch
@@ -17,6 +19,10 @@ python3 search_inventory.py --skip-fetch             # fast, no CarFax
 
 Defaults: year=2025-2026, model=X7, trim=M60i, miles=60–15000, type=all
 
+Output goes to search_output.json by default. results.json is the persistent
+union file: searches refuse to write it — fold sweeps in via merge_results.py
+(or the search_*.sh scripts' --sync flag), which only ever adds on top.
+
 Output fields per vehicle:
   vin, stockNumber, year, make, model, trim, type, odometer, internetPrice,
   extColor, certified, daysOnLot, dateInStock,
@@ -27,15 +33,27 @@ Output fields per vehicle:
 
 import argparse
 import json
+import os
 import pathlib
 import re
 import sys
 import time
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime
 
 import requests
 from dotenv import load_dotenv
+
+_CRAWLER_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def _data_path(filename: str) -> str:
+    """Resolve a data file relative to the crawler directory (so the script
+    works regardless of the caller's working directory)."""
+    if os.path.isabs(filename):
+        return filename
+    return os.path.join(_CRAWLER_DIR, filename)
 
 load_dotenv()
 
@@ -683,13 +701,21 @@ DDC_PAGE_ALIAS = {
 
 
 def _search_ddc_single(make: str, model: str, year: int | None, trim: str | None,
-                       condition: str) -> list[dict]:
+                       condition: str, site_id: str = "bmwgroup",
+                       endpoint: str = DDC_ENDPOINT,
+                       dealer: dict | None = None) -> list[dict]:
     """Single DDC query for one (year, condition) pair.
 
     `condition` must be 'new' or 'used' — it selects the DDC pageAlias.
     Pass `year=None` to skip the year filter. The returned records have
     their ``type`` field set to `condition` so the downstream merge can
-    distinguish them even when the dealer doesn't echo the type back."""
+    distinguish them even when the dealer doesn't echo the type back.
+
+    `site_id`/`endpoint`/`dealer` default to the OEM `bmwgroup` aggregate query.
+    For a standalone DDC dealer (its own account, not in the OEM feed), pass its
+    `site_id`, its own `{website}/api/widget/ws-inv-data/getInventory` endpoint,
+    and a `dealer` dict (name/city/state/website) since single-dealer responses
+    omit the `accounts` map."""
     page_alias, page_id = DDC_PAGE_ALIAS[condition]
 
     inv_params: dict = {"make": make, "model": model}
@@ -700,7 +726,7 @@ def _search_ddc_single(make: str, model: str, year: int | None, trim: str | None
     inv_params["compositeType"] = condition
 
     payload = {
-        "siteId": "bmwgroup",
+        "siteId": site_id,
         "locale": "en_US",
         "device": "DESKTOP",
         "pageAlias": page_alias,
@@ -730,7 +756,7 @@ def _search_ddc_single(make: str, model: str, year: int | None, trim: str | None
     # (notably XM / year=2026 / new) even though retries usually succeed.
     data = None
     for attempt in range(3):
-        r = requests.post(DDC_ENDPOINT, headers=DDC_HEADERS, json=payload, timeout=45)
+        r = requests.post(endpoint, headers=DDC_HEADERS, json=payload, timeout=45)
         if r.status_code in (502, 503, 504):
             if attempt < 2:
                 wait = 2 ** attempt
@@ -747,7 +773,8 @@ def _search_ddc_single(make: str, model: str, year: int | None, trim: str | None
     raw_accounts: dict = data.get("accounts", {})
     vehicles = data.get("inventory", [])
     total = data.get("pageInfo", {}).get("totalCount", 0)
-    print(f"  DDC [{condition}]: {total} vehicles from bmwgroup ({len(raw_accounts)} dealers)")
+    if site_id == "bmwgroup":
+        print(f"  DDC [{condition}]: {total} vehicles from bmwgroup ({len(raw_accounts)} dealers)")
 
     results = []
     for v in vehicles:
@@ -764,6 +791,10 @@ def _search_ddc_single(make: str, model: str, year: int | None, trim: str | None
         addr       = account.get("address", {})
         raw_url    = account.get("url") or ""
         dealer_url = ("https://" + raw_url) if raw_url and not raw_url.startswith("http") else raw_url
+        # Single-dealer sites omit the accounts map — fall back to the known
+        # dealer record passed in by the standalone-site caller.
+        if not dealer_url and dealer:
+            dealer_url = (dealer.get("website") or "").rstrip("/")
 
         # Build absolute link – DDC API returns /{type}/BMW/{year}-...-{uuid}.htm
         # Some dealers also support /inventory/{condition}-{year}-{make}-{model}-{vin}/
@@ -789,9 +820,9 @@ def _search_ddc_single(make: str, model: str, year: int | None, trim: str | None
             "daysOnLot":    _days_since(inventory_date),
             "dateInStock":  inventory_date,
             **_vin_links(vin),
-            "dealerName":   account.get("name") or v.get("accountName"),
-            "dealerCity":   addr.get("city") or v.get("accountCity"),
-            "dealerState":  addr.get("state") or v.get("accountState"),
+            "dealerName":   account.get("name") or v.get("accountName") or (dealer or {}).get("name"),
+            "dealerCity":   addr.get("city") or v.get("accountCity") or (dealer or {}).get("city"),
+            "dealerState":  addr.get("state") or v.get("accountState") or (dealer or {}).get("state"),
             "dealerUrl":    dealer_url,
             "dealerPhone":  _normalize_phone(account.get("phone")),
             "platform":     "dealercom",
@@ -831,129 +862,697 @@ def search_ddc(make: str, model: str, years: list[int] | None, trim: str | None,
                 if key not in seen:
                     seen.add(key)
                     all_results.append(rec)
+
+    all_results.extend(
+        _search_ddc_standalone(make, model, year_list, trim, conditions, seen)
+    )
     return all_results
 
 
+def _load_standalone_ddc_dealers() -> list[dict]:
+    """DDC dealers running their own site account (not part of the OEM
+    `bmwgroup` feed), so the aggregate query never returns them. Identified as
+    master_dealers.json DDC records whose `site_id` is absent from the OEM
+    Dealer.com sweep (bmw_ddc_dealers.json)."""
+    try:
+        with open(_data_path("master_dealers.json")) as f:
+            master = json.load(f)
+    except FileNotFoundError:
+        return []
+    try:
+        with open(_data_path("bmw_ddc_dealers.json")) as f:
+            oem_ids = {d.get("site_id") for d in json.load(f)}
+    except FileNotFoundError:
+        oem_ids = set()
+
+    out = []
+    for d in master:
+        platform = d.get("platform") or (d.get("census") or {}).get("platform")
+        if platform != "dealercom":
+            continue
+        site_id = d.get("site_id")
+        if site_id and site_id not in oem_ids and d.get("website"):
+            out.append(d)
+    return out
+
+
+def _search_ddc_standalone(make, model, year_list, trim, conditions,
+                           seen: set[str]) -> list[dict]:
+    dealers = _load_standalone_ddc_dealers()
+    if not dealers:
+        return []
+    print(f"  DDC: querying {len(dealers)} standalone site(s) outside the OEM feed")
+
+    def query_one(dealer: dict) -> list[dict]:
+        website = dealer["website"].rstrip("/")
+        endpoint = f"{website}/api/widget/ws-inv-data/getInventory"
+        recs: list[dict] = []
+        for yr in year_list:
+            for cond in conditions:
+                try:
+                    recs.extend(_search_ddc_single(
+                        make, model, yr, trim, cond,
+                        site_id=dealer["site_id"], endpoint=endpoint, dealer=dealer))
+                except Exception:
+                    continue
+        return recs
+
+    results: list[dict] = []
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = {pool.submit(query_one, d): d for d in dealers}
+        for fut in as_completed(futures):
+            try:
+                batch = fut.result()
+            except Exception:
+                batch = []
+            for rec in batch:
+                key = rec.get("vin") or f"{rec.get('stockNumber')}-{rec.get('dealerName')}"
+                if key not in seen:
+                    seen.add(key)
+                    results.append(rec)
+    if results:
+        print(f"  DDC standalone: +{len(results)} vehicles")
+    return results
+
+
 # ──────────────────────────────────────────────────────────────────────────────
-# DI / Algolia search  (batch query across all known DI dealer indexes)
+# DI / Cars Commerce search  (per-dealer query against the Cars Commerce API)
 # ──────────────────────────────────────────────────────────────────────────────
-def _algolia_filter(make, model, years: list[int] | None, trim,
-                    min_miles: int | None, max_miles: int | None) -> str:
-    parts = [f'make:"{make}"', f'model:"{model}"']
-    if years:
-        if len(years) == 1:
-            parts.append(f"year:{years[0]}")
-        else:
-            yr_min, yr_max = min(years), max(years)
-            parts.append(f"year >= {yr_min} AND year <= {yr_max}")
+# DealerInspire retired Algolia (its old app accounts now return
+# "Account temporary disabled for security reasons") and moved every DI site to
+# Cars Commerce's search service. Each dealer has a numeric `ccid` embedded in
+# its homepage (see harvest_di_ccid.py) and shares one public `x-api-key`. We
+# POST one query per dealer to /api/v1/listings/{ccid}/search and page through.
+CC_SEARCH_URL = "https://websites-search.api.carscommerce.inc/api/v1/listings/{ccid}/search"
+CC_API_KEY = "OQa8l7SzMctJyr5bhSG9jYvlGnZUQfgl"
+CC_HEADERS = {
+    "x-api-key": CC_API_KEY,
+    "Content-Type": "application/json",
+    "Accept": "application/json",
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
+    ),
+}
+
+
+def _cc_filters(make, model, years, trim) -> dict:
+    # Some DI dealers store "X5 M60i" as the *model* (with trim repeated in the
+    # trim field), so when a trim is given also accept the combined model name.
+    models = [model, f"{model} {trim}"] if trim else [model]
+    filters: dict = {"make": [make], "model": models}
     if trim:
-        parts.append(f'trim:"{trim}"')
-    if min_miles is not None:
-        parts.append(f"miles > {min_miles}")
-    if max_miles is not None:
-        parts.append(f"miles < {max_miles}")
-    return " AND ".join(parts)
+        filters["trim"] = [trim]
+    if years:
+        filters["year"] = list(years)
+    return filters
+
+
+def _cc_query_dealer(dealer: dict, make, model, years, trim,
+                     min_miles, max_miles) -> list[dict]:
+    """Query one DI dealer's Cars Commerce account, paging until exhausted."""
+    ccid = dealer.get("cc_ccid")
+    if not ccid:
+        return []
+    api_key = dealer.get("cc_api_key") or CC_API_KEY
+    url = CC_SEARCH_URL.format(ccid=ccid)
+    website = (dealer.get("website") or "").rstrip("/")
+    headers = {**CC_HEADERS, "x-api-key": api_key}
+    if website:
+        headers["Origin"] = website
+        headers["Referer"] = website + "/"
+
+    body = {"filters": _cc_filters(make, model, years, trim)}
+    out: list[dict] = []
+    page = 1
+    while True:
+        payload = {**body, "page": page} if page > 1 else body
+        try:
+            r = requests.post(url, headers=headers, json=payload, timeout=25)
+        except requests.RequestException:
+            break
+        if r.status_code != 200:
+            break
+        data = r.json().get("data") or {}
+        listings = data.get("listings") or []
+        for hit in listings:
+            rec = _cc_to_record(hit, dealer, min_miles, max_miles)
+            if rec is not None:
+                out.append(rec)
+        total = data.get("total_vehicle_count") or 0
+        # 20 hits/page; stop once we've pulled everything or hit an empty page.
+        if not listings or len(out) >= total or page >= 25:
+            break
+        page += 1
+    return out
+
+
+def _cc_to_record(hit: dict, dealer: dict, min_miles, max_miles) -> dict | None:
+    if (hit.get("status") or "publish") not in ("publish", "modified", "pend-sale"):
+        return None
+    try:
+        odometer = int(hit["mileage"]) if hit.get("mileage") is not None else None
+    except (ValueError, TypeError):
+        odometer = None
+    # Mileage pre-filter (the API has no miles filter; we do it client-side).
+    if odometer is not None:
+        if min_miles is not None and odometer < min_miles:
+            return None
+        if max_miles is not None and odometer > max_miles:
+            return None
+
+    pricing = hit.get("pricing") or {}
+    styles = hit.get("styles") or {}
+    type_slug = hit.get("type") or "Pre-Owned"
+    vtype = "new" if type_slug == "New" else "used"
+    website = (dealer.get("website") or "").rstrip("/")
+    vdp = hit.get("vdp_url") or ""
+    link = vdp if vdp.startswith("http") else (website + "/" + vdp.lstrip("/") if vdp else website)
+    date_in_stock = hit.get("date_in_stock")
+    vin = hit.get("vin")
+    return {
+        "vin":           vin,
+        "stockNumber":   hit.get("stock"),
+        "year":          hit.get("year"),
+        "make":          hit.get("make"),
+        "model":         hit.get("model"),
+        "trim":          hit.get("trim"),
+        "odometer":      odometer,
+        "internetPrice": _to_int(pricing.get("our_price")) or _to_int(pricing.get("price"))
+                         or _to_int(pricing.get("msrp")),
+        "extColor":      styles.get("exterior_color"),
+        "certified":     bool(hit.get("is_certified")),
+        "daysOnLot":     _days_since(date_in_stock),
+        "dateInStock":   date_in_stock,
+        **_vin_links(vin),
+        "dealerName":    dealer.get("name") or dealer.get("dealer_slug"),
+        "dealerCity":    dealer.get("city"),
+        "dealerState":   dealer.get("state"),
+        "dealerUrl":     website,
+        "dealerPhone":   None,   # filled in by the VDP pass if available
+        "platform":      "dealerinspire",
+        "type":          vtype,
+        "link":          link,
+        "vinLink":       link,   # Cars Commerce vdp_url is already the VIN slug
+    }
 
 
 def search_di(make: str, model: str, years: list[int] | None, trim: str | None,
               min_miles: int | None, max_miles: int | None,
-              dealers_file: str = "dealers.json") -> list[dict]:
+              dealers_file: str = "master_dealers.json") -> list[dict]:
+    """Query every DealerInspire dealer via the Cars Commerce search API.
+
+    Reads DI dealers (with a harvested `cc_ccid`) from master_dealers.json and
+    fires one threaded request per dealer. Dealers without a ccid are skipped
+    (run harvest_di_ccid.py to fill them in).
     """
-    Batch-query all DealerInspire Algolia indexes in a single request per app.
-    Algolia supports up to 1000 sub-queries per batch call.
-    """
-    with open(dealers_file) as f:
+    with open(_data_path(dealers_file)) as f:
         dealers: list[dict] = json.load(f)
 
-    di_dealers = [d for d in dealers if d.get("platform") == "dealerinspire" and d.get("di_index")]
+    di_dealers = [d for d in dealers if _is_di(d) and d.get("cc_ccid")]
+    missing = sum(1 for d in dealers if _is_di(d) and not d.get("cc_ccid"))
+    if missing:
+        print(f"  DI: {missing} DealerInspire dealers have no ccid yet "
+              "(run harvest_di_ccid.py) — skipped")
+    if not di_dealers:
+        return []
 
-    # Group by Algolia app
-    by_app: dict[str, list[dict]] = defaultdict(list)
-    for d in di_dealers:
-        by_app[d["app_id"]].append(d)
+    results: list[dict] = []
+    dealers_with_hits = 0
+    with ThreadPoolExecutor(max_workers=12) as pool:
+        futures = {
+            pool.submit(_cc_query_dealer, d, make, model, years, trim,
+                        min_miles, max_miles): d
+            for d in di_dealers
+        }
+        for fut in as_completed(futures):
+            try:
+                recs = fut.result()
+            except Exception:
+                recs = []
+            if recs:
+                dealers_with_hits += 1
+                results.extend(recs)
 
-    alg_filter = _algolia_filter(make, model, years, trim, min_miles, max_miles)
-    params_str = (
-        f"filters={requests.utils.quote(alg_filter)}"
-        "&hitsPerPage=200"
-        "&attributesToRetrieve=vin,stock,year,make,model,trim,miles,our_price,msrp,ext_color,certified,type,location,title,link,days_in_stock,date_in_stock"
-    )
+    print(f"  DI (Cars Commerce): {len(di_dealers)} dealers queried → "
+          f"{len(results)} hits from {dealers_with_hits} dealers")
+    return results
 
-    results = []
-    for app_id, app_dealers in by_app.items():
-        if app_id not in ALGOLIA_APPS:
-            print(f"  DI app {app_id}: skipped (unknown API key — {len(app_dealers)} dealers)")
+
+def _is_di(d: dict) -> bool:
+    if d.get("platform") == "dealerinspire":
+        return True
+    census = d.get("census") or {}
+    return census.get("platform") == "dealerinspire"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# DealerOn search  (per-dealer query against the Cosmos SRP JSON API)
+# ──────────────────────────────────────────────────────────────────────────────
+# DealerOn exposes inventory at
+#   /api/vhcliaa/vehicle-pages/cosmos/srp/vehicles/{dealerId}/{pageId}
+# with a base64 `baseFilter` (type='n' for the New SRP, 'u' for Used) plus
+# make/model/trim query params. dealerId + the per-SRP pageIds are harvested by
+# harvest_dealeron.py into master_dealers.json (do_dealer_id / do_*_page_id).
+DEALERON_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/json",
+    "X-Requested-With": "XMLHttpRequest",
+}
+_DEALERON_BASEFILTER = {"new": "dHlwZT0nbic=", "used": "dHlwZT0ndSc="}  # b64 type='n'/'u'
+
+
+def _is_dealeron(d: dict) -> bool:
+    return (d.get("platform") == "dealeron"
+            or (d.get("census") or {}).get("platform") == "dealeron")
+
+
+def _trim_matches_loose(spec_trim: str | None, value: str | None) -> bool:
+    """Case/punctuation-insensitive bidirectional substring match. Dealers
+    abbreviate trims inconsistently ('760i xDrive' vs '760i'), so either side
+    containing the other counts as a match."""
+    if not spec_trim:
+        return True
+    a = re.sub(r"[^a-z0-9]", "", spec_trim.lower())
+    b = re.sub(r"[^a-z0-9]", "", (value or "").lower())
+    if not b:
+        return False
+    return a in b or b in a
+
+
+def _dealeron_model_matches(card_model: str | None, model: str) -> bool:
+    """Word-prefix match: dealers variously store 'X5', 'X5 xDrive40i', or
+    'X5 M Competition' as the model. 'X5 M60i' must NOT match target 'X5 M'."""
+    if not card_model:
+        return False
+    return card_model == model or card_model.startswith(model + " ")
+
+
+def _dealeron_query(dealer: dict, make, model, years, trim,
+                    min_miles, max_miles) -> list[dict]:
+    dealer_id = dealer.get("do_dealer_id")
+    if not dealer_id:
+        return []
+    website = (dealer.get("website") or "").rstrip("/")
+    host = website.replace("https://", "").replace("http://", "")
+    year_set = set(years) if years else None
+
+    pages = [("new", dealer.get("do_new_page_id")),
+             ("used", dealer.get("do_used_page_id"))]
+    out: list[dict] = []
+    for condition, page_id in pages:
+        if not page_id:
             continue
-        api_key = ALGOLIA_APPS[app_id]
-        host    = f"https://{app_id.lower()}-dsn.algolia.net"
+        base = (f"{website}/api/vhcliaa/vehicle-pages/cosmos/srp/vehicles/"
+                f"{dealer_id}/{page_id}")
 
-        requests_payload = [
-            {"indexName": d["di_index"], "params": params_str}
-            for d in app_dealers
-        ]
-
-        r = requests.post(
-            f"{host}/1/indexes/*/queries",
-            headers={
-                "x-algolia-application-id": app_id,
-                "x-algolia-api-key": api_key,
-                "Content-Type": "application/json",
-            },
-            json={"requests": requests_payload},
-            timeout=20,
-        )
-        r.raise_for_status()
-        data = r.json()
-
-        # Each element of "results" corresponds to one index query
-        index_map = {d["di_index"]: d for d in app_dealers}
-        hit_count = 0
-        for i, res in enumerate(data.get("results", [])):
-            dealer_info = app_dealers[i]
-            for hit in res.get("hits", []):
-                odometer_raw = hit.get("miles")
+        def run(params: dict, client_filter: bool) -> list[dict]:
+            got: list[dict] = []
+            page_num = 1
+            while True:
+                q = dict(params)
+                if page_num > 1:
+                    q["pt"] = str(page_num)
                 try:
-                    odometer = int(odometer_raw) if odometer_raw is not None else None
-                except (ValueError, TypeError):
-                    odometer = None
+                    r = requests.get(base,
+                                     headers={**DEALERON_HEADERS, "Referer": website + "/"},
+                                     params=q, timeout=25)
+                except requests.RequestException:
+                    break
+                if r.status_code != 200:
+                    break
+                try:
+                    data = r.json()
+                except ValueError:
+                    break
+                cards = [c.get("VehicleCard") for c in data.get("DisplayCards", [])
+                         if c.get("VehicleCard")]
+                for vc in cards:
+                    if client_filter:
+                        if not _dealeron_model_matches(vc.get("VehicleModel"), model):
+                            continue
+                        if not _trim_matches_loose(trim, vc.get("VehicleTrim")):
+                            continue
+                    rec = _dealeron_to_record(vc, dealer, condition, year_set,
+                                              min_miles, max_miles)
+                    if rec is not None:
+                        got.append(rec)
+                paging = (data.get("Paging") or {}).get("PaginationDataModel") or {}
+                total_pages = paging.get("TotalPages") or 1
+                if page_num >= total_pages or page_num >= 15 or not cards:
+                    break
+                page_num += 1
+            return got
 
-                # location is a string of option codes in DI, not a dict — use dealer_info
-                dealer_website = dealer_info.get("website", "")
-                link = hit.get("link") or ""
-                # DI link from Algolia is already the VIN slug path e.g.
-                # /inventory/used-2025-bmw-x7-m60i-awd-sport-utility-{vin}/
-                # No secondary vinLink needed — it IS the VIN slug.
-                full_link = link if link.startswith("http") else (dealer_website.rstrip("/") + "/" + link.lstrip("/")) if link else dealer_website
-                date_in_stock = hit.get("date_in_stock")
-                vin = hit.get("vin")
-                results.append({
-                    "vin":          vin,
-                    "stockNumber":  hit.get("stock"),
-                    "year":         hit.get("year"),
-                    "make":         hit.get("make"),
-                    "model":        hit.get("model"),
-                    "trim":         hit.get("trim"),
-                    "odometer":     odometer,
-                    "internetPrice": _to_int(hit.get("our_price")) or _to_int(hit.get("msrp")),
-                    "extColor":     hit.get("ext_color"),
-                    "certified":    hit.get("certified"),
-                    "daysOnLot":    hit.get("days_in_stock") or _days_since(date_in_stock),
-                    "dateInStock":  date_in_stock,
-                    **_vin_links(vin),
-                    "dealerName":   dealer_info.get("name") or dealer_info.get("dealer_slug"),
-                    "dealerCity":   dealer_info.get("city"),
-                    "dealerState":  dealer_info.get("state"),
-                    "dealerUrl":    dealer_website,
-                    "dealerPhone":  None,   # filled in by VDP pass if available
-                    "platform":     "dealerinspire",
-                    "type":         hit.get("type") or "used",
-                    "link":         full_link,
-                    "vinLink":      full_link,   # DI links are already VIN slugs
-                })
-                hit_count += 1
+        common = {"host": host, "baseFilter": _DEALERON_BASEFILTER[condition]}
+        server = {**common, "make": make, "model": model}
+        if trim:
+            server["trim"] = trim
+        recs = run(server, client_filter=False)
+        if not recs:
+            # Some dealers store 'X5 xDrive40i' as the model, so the exact
+            # server-side model filter finds nothing — refetch the whole make
+            # and filter client-side instead.
+            recs = run({**common, "make": make}, client_filter=True)
+        out.extend(recs)
+    return out
 
-        print(f"  DI app {app_id}: {len(app_dealers)} indexes → {hit_count} hits")
 
+def _dealeron_to_record(vc: dict, dealer: dict, condition: str,
+                        year_set, min_miles, max_miles) -> dict | None:
+    # Server filter is by make/model/trim only; enforce year/miles client-side.
+    year = vc.get("VehicleYear")
+    if year_set and year not in year_set:
+        return None
+    odometer = _to_int(vc.get("VehicleMileage"))
+    if odometer is not None:
+        if min_miles is not None and odometer < min_miles:
+            return None
+        if max_miles is not None and odometer > max_miles:
+            return None
+
+    vtype = "new" if (vc.get("VehicleType") or condition) == "new" else "used"
+    website = (dealer.get("website") or "").rstrip("/")
+    link = vc.get("VehicleDetailUrl") or website
+    vin = vc.get("VehicleVin")
+    price = _to_int(vc.get("VehicleInternetPrice"))
+    if not price:
+        price = _to_int(vc.get("VehicleMsrp"))
+    return {
+        "vin":           vin,
+        "stockNumber":   vc.get("VehicleStockNumber"),
+        "year":          year,
+        "make":          vc.get("VehicleMake"),
+        "model":         vc.get("VehicleModel"),
+        "trim":          vc.get("VehicleTrim"),
+        "odometer":      odometer,
+        "internetPrice": price,
+        "extColor":      vc.get("ExteriorColorLabel"),
+        "certified":     bool(vc.get("VehicleCpo")),
+        "daysOnLot":     _days_since(vc.get("VehicleTaggingInventoryDate")),
+        "dateInStock":   vc.get("VehicleTaggingInventoryDate"),
+        **_vin_links(vin),
+        "dealerName":    vc.get("DealerName") or dealer.get("name"),
+        "dealerCity":    vc.get("DealerLocatedAtCity") or dealer.get("city"),
+        "dealerState":   vc.get("DealerLocatedAtState") or dealer.get("state"),
+        "dealerUrl":     website,
+        "dealerPhone":   None,
+        "platform":      "dealeron",
+        "type":          vtype,
+        "link":          link,
+        "vinLink":       link,
+    }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Team Velocity search  (parse the SSR dataLayer embedded in each SRP page)
+# ──────────────────────────────────────────────────────────────────────────────
+# Team Velocity / Apollo sites server-render their inventory and embed a
+# per-vehicle dataLayer object in the SRP HTML:
+#   {"item_category":..,"item_color":..,"item_condition":"new","item_id":<VIN>,
+#    "item_inventory_date":..,"item_make":"BMW","item_model":"X7",
+#    "item_number":<stock>,"item_variant":<trim>,"item_year":..,"item_price":..}
+# We fetch /inventory/{condition}/bmw/{model-slug} (paginated) with plain
+# requests — no browser, no per-dealer harvest needed (just the website).
+TV_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,*/*;q=0.9",
+}
+_TV_ITEM_RE = re.compile(r'\{"item_category":.*?"item_price":\d+\}')
+
+
+def _is_teamvelocity(d: dict) -> bool:
+    return (d.get("platform") == "teamvelocity"
+            or (d.get("census") or {}).get("platform") == "teamvelocity")
+
+
+def _tv_query(dealer: dict, make, model, years, trim,
+              min_miles, max_miles, vehicle_type,
+              blocked_out: list | None = None) -> list[dict]:
+    website = (dealer.get("website") or "").rstrip("/")
+    if not website:
+        return []
+    model_slug = model.lower().replace(" ", "-")
+    trim_l = trim.lower() if trim else None
+    year_set = set(years) if years else None
+    conditions = ["new", "used", "cpo"] if vehicle_type == "all" else \
+                 (["new"] if vehicle_type == "new" else ["used", "cpo"])
+
+    seen_vins: set[str] = set()
+    out: list[dict] = []
+    for condition in conditions:
+        page = 1
+        while page <= 15:
+            url = f"{website}/inventory/{condition}/bmw/{model_slug}"
+            try:
+                r = requests.get(url, headers={**TV_HEADERS, "Referer": website + "/"},
+                                 params={"page": page} if page > 1 else None, timeout=25)
+            except requests.RequestException:
+                break
+            # Some TV dealers sit behind Akamai and 403 plain requests; queue
+            # them for the sequential browser fallback.
+            if r.status_code in (403, 429) and page == 1 and blocked_out is not None:
+                if dealer not in blocked_out:
+                    blocked_out.append(dealer)
+                break
+            if r.status_code != 200:
+                break
+            items = []
+            for raw in _TV_ITEM_RE.findall(r.text):
+                try:
+                    items.append(json.loads(raw))
+                except ValueError:
+                    continue
+            if not items:
+                break
+            new_this_page = 0
+            for it in items:
+                vin = it.get("item_id")
+                if not vin or vin in seen_vins:
+                    continue
+                if (it.get("item_make") or "").upper() != make.upper():
+                    continue
+                if not _trim_matches_loose(trim_l, it.get("item_variant")):
+                    continue
+                if year_set and it.get("item_year") not in year_set:
+                    continue
+                seen_vins.add(vin)
+                new_this_page += 1
+                out.append(_tv_to_record(it, dealer, website))
+            # dataLayer shows one page (~11 items) at a time; stop when a page
+            # yields no rows we haven't already seen.
+            if new_this_page == 0 and page > 1:
+                break
+            if len(items) < 8:
+                break
+            page += 1
+    return out
+
+
+def _tv_to_record(it: dict, dealer: dict, website: str) -> dict:
+    cond = (it.get("item_condition") or "").lower()
+    vtype = "new" if cond == "new" else "used"
+    vin = it.get("item_id")
+    model_slug = (it.get("item_model") or "").lower().replace(" ", "-")
+    link = f"{website}/inventory/{cond or 'used'}/bmw/{model_slug}"
+    return {
+        "vin":           vin,
+        "stockNumber":   it.get("item_number"),
+        "year":          it.get("item_year"),
+        "make":          it.get("item_make"),
+        "model":         it.get("item_model"),
+        "trim":          it.get("item_variant"),
+        "odometer":      None,   # not present in the dataLayer
+        "internetPrice": _to_int(it.get("item_price")) or None,
+        "extColor":      it.get("item_color"),
+        "certified":     cond in ("cpo", "certified"),
+        "daysOnLot":     _days_since(it.get("item_inventory_date")),
+        "dateInStock":   it.get("item_inventory_date"),
+        **_vin_links(vin),
+        "dealerName":    dealer.get("name"),
+        "dealerCity":    dealer.get("city"),
+        "dealerState":   dealer.get("state"),
+        "dealerUrl":     website,
+        "dealerPhone":   None,
+        "platform":      "teamvelocity",
+        "type":          vtype,
+        "link":          link,
+        "vinLink":       link,
+    }
+
+
+def _tv_parse_html(html: str, dealer: dict, website: str, make, trim,
+                   year_set, seen_vins: set[str]) -> list[dict]:
+    trim_l = trim.lower() if trim else None
+    out = []
+    for raw in _TV_ITEM_RE.findall(html):
+        try:
+            it = json.loads(raw)
+        except ValueError:
+            continue
+        vin = it.get("item_id")
+        if not vin or vin in seen_vins:
+            continue
+        if (it.get("item_make") or "").upper() != make.upper():
+            continue
+        if not _trim_matches_loose(trim_l, it.get("item_variant")):
+            continue
+        if year_set and it.get("item_year") not in year_set:
+            continue
+        seen_vins.add(vin)
+        out.append(_tv_to_record(it, dealer, website))
+    return out
+
+
+def _tv_browser_fallback(dealers: list[dict], make, model, years, trim,
+                         vehicle_type) -> list[dict]:
+    """Fetch Akamai-blocked TV dealers through a stealth browser (sequential)."""
+    try:
+        from playwright.sync_api import sync_playwright
+        from playwright_stealth.stealth import Stealth
+    except Exception:
+        print(f"  Team Velocity: {len(dealers)} blocked dealers need a browser "
+              "(playwright unavailable) — skipped")
+        return []
+
+    profile = str(pathlib.Path.home() / ".bmw_browser_profile")
+    for name in ("SingletonLock", "SingletonCookie", "SingletonSocket"):
+        p = pathlib.Path(profile) / name
+        try:
+            if p.is_symlink() or p.exists():
+                p.unlink()
+        except OSError:
+            pass
+
+    model_slug = model.lower().replace(" ", "-")
+    year_set = set(years) if years else None
+    conditions = ["new", "used", "cpo"] if vehicle_type == "all" else \
+                 (["new"] if vehicle_type == "new" else ["used", "cpo"])
+    results: list[dict] = []
+    pw = ctx = None
+    try:
+        pw = sync_playwright().start()
+        ctx = pw.chromium.launch_persistent_context(
+            profile, channel="chrome", headless=True,
+            args=["--disable-blink-features=AutomationControlled"],
+            viewport={"width": 1440, "height": 900})
+        Stealth().apply_stealth_sync(ctx)
+        page = ctx.new_page()
+        for dealer in dealers:
+            website = dealer["website"].rstrip("/")
+            seen_vins: set[str] = set()
+            for condition in conditions:
+                try:
+                    page.goto(f"{website}/inventory/{condition}/bmw/{model_slug}",
+                              wait_until="domcontentloaded", timeout=30000)
+                    page.wait_for_timeout(2500)
+                    html = page.content()
+                except Exception:
+                    continue
+                results.extend(_tv_parse_html(html, dealer, website, make, trim,
+                                              year_set, seen_vins))
+    except Exception as e:
+        print(f"  Team Velocity browser fallback error: {str(e)[:60]}")
+    finally:
+        for fn in (lambda: ctx and ctx.close(), lambda: pw and pw.stop()):
+            try:
+                fn()
+            except Exception:
+                pass
+    return results
+
+
+def search_teamvelocity(make: str, model: str, years: list[int] | None,
+                        trim: str | None, min_miles: int | None,
+                        max_miles: int | None, vehicle_type: str = "all",
+                        dealers_file: str = "master_dealers.json",
+                        use_browser: bool = False) -> list[dict]:
+    """Query every Team Velocity dealer by parsing their SSR SRP dataLayer.
+
+    Plain requests handles most dealers. Some sit behind Akamai and 403 both
+    plain requests and headless Chrome; those need the shared browser profile to
+    have earned trust cookies first (see cars_com.py --warmup). Pass
+    use_browser=True once the profile is warmed to pick them up."""
+    with open(_data_path(dealers_file)) as f:
+        dealers = json.load(f)
+    tv_dealers = [d for d in dealers if _is_teamvelocity(d) and d.get("website")]
+    if not tv_dealers:
+        return []
+
+    results: list[dict] = []
+    dealers_with_hits = 0
+    blocked: list[dict] = []
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        futures = {
+            pool.submit(_tv_query, d, make, model, years, trim,
+                        min_miles, max_miles, vehicle_type, blocked): d
+            for d in tv_dealers
+        }
+        for fut in as_completed(futures):
+            try:
+                recs = fut.result()
+            except Exception:
+                recs = []
+            if recs:
+                dealers_with_hits += 1
+                results.extend(recs)
+
+    if blocked and use_browser:
+        print(f"  Team Velocity: {len(blocked)} dealer(s) blocked plain requests "
+              "— retrying via browser")
+        fb = _tv_browser_fallback(blocked, make, model, years, trim, vehicle_type)
+        if fb:
+            dealers_with_hits += len({r["dealerName"] for r in fb})
+            results.extend(fb)
+
+    print(f"  Team Velocity: {len(tv_dealers)} dealers queried → "
+          f"{len(results)} hits from {dealers_with_hits} dealers")
+    return results
+
+
+def search_dealeron(make: str, model: str, years: list[int] | None, trim: str | None,
+                    min_miles: int | None, max_miles: int | None,
+                    vehicle_type: str = "all",
+                    dealers_file: str = "master_dealers.json") -> list[dict]:
+    """Query every DealerOn dealer via the Cosmos SRP JSON API (threaded)."""
+    with open(_data_path(dealers_file)) as f:
+        dealers = json.load(f)
+
+    do_dealers = [d for d in dealers if _is_dealeron(d) and d.get("do_dealer_id")]
+    missing = sum(1 for d in dealers if _is_dealeron(d) and not d.get("do_dealer_id"))
+    if missing:
+        print(f"  DealerOn: {missing} dealers have no ids yet "
+              "(run harvest_dealeron.py) — skipped")
+    if not do_dealers:
+        return []
+
+    results: list[dict] = []
+    dealers_with_hits = 0
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        futures = {
+            pool.submit(_dealeron_query, d, make, model, years, trim,
+                        min_miles, max_miles): d
+            for d in do_dealers
+        }
+        for fut in as_completed(futures):
+            try:
+                recs = fut.result()
+            except Exception:
+                recs = []
+            if vehicle_type != "all":
+                recs = [r for r in recs if r["type"] == vehicle_type]
+            if recs:
+                dealers_with_hits += 1
+                results.extend(recs)
+
+    print(f"  DealerOn: {len(do_dealers)} dealers queried → "
+          f"{len(results)} hits from {dealers_with_hits} dealers")
     return results
 
 
@@ -1225,8 +1824,10 @@ def main() -> None:
                         help="Maximum odometer (default: 15000)")
     parser.add_argument("--type",          choices=["new", "used", "all"], default="all",
                         help="Vehicle condition (default: all)")
-    parser.add_argument("--out",         default="results.json",
-                        help="Output JSON file (default: results.json)")
+    parser.add_argument("--out",         default="search_output.json",
+                        help="Output JSON file (default: search_output.json). "
+                             "results.json is reserved for the merge/union flow "
+                             "and cannot be written by a search.")
     parser.add_argument("--skip-fetch", action="store_true",
                         help="Skip VDP page fetching (faster, but no CarFax URLs or resolved links)")
     parser.add_argument("--fetch-carfax", action="store_true",
@@ -1242,10 +1843,20 @@ def main() -> None:
                         help="OpenAI model for --analyze / --analyze-only (default: gpt-4o-mini)")
     args = parser.parse_args()
 
+    # results.json is the persistent, accumulated inventory — only
+    # merge_results.py (the union flow) may write it. A search run overwriting
+    # it once wiped ~400 vehicles down to a single sweep's worth.
+    if os.path.basename(args.out) == "results.json":
+        parser.error(
+            "refusing to write results.json — it is the persistent union file. "
+            "Write to another file (e.g. the default search_output.json) and fold "
+            "it in with: uv run merge_results.py --inputs results.json <file> "
+            "--out results.json")
+
     # ── Shortcut: just analyze an existing file, skip search entirely ─────────
     if args.analyze_only:
         src = args.analyze_only
-        dst = args.out if args.out != "results.json" else src
+        dst = args.out if args.out != "search_output.json" else src
         print(f"\n[ Ownership Analysis Only: {src} ]")
         with open(src) as f:
             vehicles = json.load(f)
@@ -1285,13 +1896,29 @@ def main() -> None:
         except Exception as e:
             print(f"  DDC error: {e}")
 
-        print(f"\n[ DealerInspire / Algolia — {label} ]")
+        print(f"\n[ DealerInspire / Cars Commerce — {label} ]")
         try:
             di = search_di(args.make, model, years, trim,
                            args.min_miles, args.max_miles)
             all_results.extend(di)
         except Exception as e:
             print(f"  DI error: {e}")
+
+        print(f"\n[ DealerOn — {label} ]")
+        try:
+            do = search_dealeron(args.make, model, years, trim,
+                                 args.min_miles, args.max_miles, ddc_type)
+            all_results.extend(do)
+        except Exception as e:
+            print(f"  DealerOn error: {e}")
+
+        print(f"\n[ Team Velocity — {label} ]")
+        try:
+            tv = search_teamvelocity(args.make, model, years, trim,
+                                     args.min_miles, args.max_miles, ddc_type)
+            all_results.extend(tv)
+        except Exception as e:
+            print(f"  Team Velocity error: {e}")
         print()
 
     # Post-filter miles (DDC odometer comes from trackingAttributes, filtered here)

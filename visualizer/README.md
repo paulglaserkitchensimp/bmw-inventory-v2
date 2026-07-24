@@ -7,15 +7,19 @@ filter, sort, map, annotate, and triage dealer inventory.
 
 ## Features
 
-- **Table / Map / Split views** — toggle from the header.
-- **Filter panel** — full-text search plus faceted filters for state, trim,
-  mileage, days on lot, price, certified, platform, and CarFax owner count.
-- **Vehicle detail drawer** — opens on click; shows CarFax, NHTSA, dealer
-  links, LLM ownership reasoning, etc.
-- **Annotations** — cycle each VIN through `shortlisted → contacted →
-  purchased → pass`, plus a free-text comment. Persisted to disk at
-  `public/data/annotations.json` via a small Vite dev-server middleware
-  (`/api/annotations`).
+- **Table / Map / Split views** — toggle from the header. Dark mode toggle too.
+- **Filter panel** — full-text search (VIN, dealer, color, your notes) plus
+  faceted filters for state, trim, mileage, days on lot, price, certified,
+  platform, and CarFax owner count.
+- **Vehicle detail panel** — opens inline on click; shows CarFax, NHTSA,
+  dealer links, LLM ownership reasoning, etc.
+- **Annotations** — cycle each VIN through `interesting → shortlisted →
+  contacted → negotiating → purchased → pass` (plus explicit pass reasons),
+  with a free-text comment and optional Leasehackr/listing links. Persisted
+  to disk at `public/data/annotations.json` via a small Vite dev-server
+  middleware (`/api/annotations`).
+- **Sortable table** — every column including dealer and distance from your
+  configured home ZIP (`ORIGIN_COORDS` in `VehicleTable.tsx`).
 - **Map view** — Leaflet + OpenStreetMap tiles. Dealer city/state pairs are
   geocoded via Nominatim and cached in `localStorage` so subsequent runs
   load instantly.
@@ -67,10 +71,11 @@ visualizer/public/data/annotations.json  ← read/written by /api/annotations (d
 - `src/hooks/useVehicles.ts` — fetches `/data/results.json` and applies filters.
 - `src/hooks/useAnnotations.ts` — VIN → `{tag, comment}` map, debounced save.
 - `src/hooks/useGeocoder.ts` — Nominatim geocoding with `localStorage` cache.
+- `src/hooks/useDarkMode.ts` — theme state (localStorage + OS preference).
 - `src/components/FilterPanel.tsx` — left sidebar.
 - `src/components/VehicleTable.tsx` — sortable table with inline tag/comment.
 - `src/components/MapView.tsx` — Leaflet map, vehicles clustered by dealer.
-- `src/components/VehicleDetail.tsx` — side drawer with full record.
+- `src/components/VehicleDetail.tsx` — inline detail panel with full record.
 - `vite.config.ts` — defines the `/api/annotations` GET/POST middleware that
   reads/writes `public/data/annotations.json`.
 

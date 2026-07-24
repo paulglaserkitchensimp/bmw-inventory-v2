@@ -14,17 +14,17 @@ are preserved across runs.
 
 Usage
 -----
-  # crawl the default "2025 X7 M60i near Livonia, MI" search
+  # crawl the default "2025 X7 M60i near Detroit, MI" search
   uv run python crawl_autotrader.py
 
   # arbitrary search URL — the trim is auto-derived from the URL path
   # (e.g. '.../bmw/x7/xdrive40i/...' implies --trim xdrive40i)
   uv run python crawl_autotrader.py \
-      --url "https://www.autotrader.com/cars-for-sale/all-cars/2025-2026/bmw/x7/xdrive40i/livonia-mi?mileage=15000&searchRadius=0"
+      --url "https://www.autotrader.com/cars-for-sale/all-cars/2025-2026/bmw/x7/xdrive40i/detroit-mi?mileage=15000&searchRadius=0"
 
   # URLs without a trim segment (e.g. XM) get no filter automatically
   uv run python crawl_autotrader.py \
-      --url "https://www.autotrader.com/cars-for-sale/all-cars/2025-2026/bmw/xm/livonia-mi?mileage=15000&searchRadius=0"
+      --url "https://www.autotrader.com/cars-for-sale/all-cars/2025-2026/bmw/xm/detroit-mi?mileage=15000&searchRadius=0"
 
   # add more excluded states (default is just CA). Pass '' to keep all.
   uv run python crawl_autotrader.py --exclude-states CA,HI
@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import pathlib
 import re
 import sys
@@ -57,7 +58,7 @@ NEXT_DATA_RE = re.compile(
 
 DEFAULT_URL = (
     "https://www.autotrader.com/cars-for-sale/all-cars/2025/bmw/x7/m60i/"
-    "livonia-mi?mileage=15000&searchRadius=0"
+    "detroit-mi?mileage=15000&searchRadius=0"
 )
 
 
@@ -158,7 +159,7 @@ def _extract_make_model_trim_from_url(url: str) -> tuple[str | None, str | None,
                 return p, None, None
             model = after_make[0]
             # If there are 3+ segments after the make, parts[i+2] is the trim;
-            # otherwise the URL has no trim filter (e.g. /bmw/xm/livonia-mi/).
+            # otherwise the URL has no trim filter (e.g. /bmw/xm/detroit-mi/).
             trim = after_make[1] if len(after_make) >= 3 else None
             return p, model, trim
     return None, None, None
@@ -520,7 +521,7 @@ def main() -> None:
         help="Filter listings by atTrim using a case- and "
         "punctuation-insensitive substring match. When omitted, the trim is "
         "auto-derived from the URL path (e.g. '.../bmw/x7/m60i/...' → 'm60i'); "
-        "URLs without a trim segment (e.g. '.../bmw/xm/livonia-mi/...') get no "
+        "URLs without a trim segment (e.g. '.../bmw/xm/detroit-mi/...') get no "
         "filter. Pass --trim '' to explicitly disable filtering.",
     )
     ap.add_argument(
@@ -541,6 +542,11 @@ def main() -> None:
                     help="Maximum odometer (default: 15000)")
 
     args = ap.parse_args()
+
+    # results.json is the persistent union file — only merge_results.py writes it.
+    if os.path.basename(args.out) == "results.json":
+        ap.error("refusing to write results.json — use another output file and "
+                 "merge it in via merge_results.py")
 
     if args.warmup:
         sys.exit(_warmup(args.url))

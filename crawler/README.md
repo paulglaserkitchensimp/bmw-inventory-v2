@@ -1,19 +1,28 @@
 # BMW Crawler
 
-Searches BMW inventory across every US dealer in two platform sweeps:
+Searches BMW inventory nationwide by querying dealer website platforms
+directly, plus three marketplace aggregators for everything else.
 
-- **Dealer.com (DDC)** — one call per year to the `bmwgroup` OEM site (~275 dealers)
-- **DealerInspire (DI)** — one batched Algolia query per app (~44 dealers)
+**Dealer platforms** (via `search_inventory.py`, driven by `master_dealers.json`):
 
-After collecting hits, it optionally fetches each VDP (vehicle detail page) to
-extract the signed CarFax URL, owner-count badge, and fully-resolved link, and
-can run the full CarFax report through an LLM to assess likely private vs
-dealer-only ownership.
+- **Dealer.com (DDC)** — one JSON query per year to the OEM `bmwgroup`
+  account (~150 dealers), plus per-site queries for standalone DDC accounts
+- **DealerInspire (DI)** — Cars Commerce search API, one call per dealer
+  (~120 dealers)
+- **DealerOn** — Cosmos SRP JSON API (~30 dealers)
+- **Team Velocity** — vehicle dataLayer parsed from server-rendered SRP
+  HTML (~22 dealers)
 
-Supplementary marketplace crawlers fill gaps those two platforms miss:
+**Aggregators** (fill in Dealer eProcess, DealerSocket, and other platforms):
 
-- **Cars.com** (`cars_com.py`) — scrapes any `cars.com/shopping/results/` URL.
-- **merge_results.py** — unions multiple result files, deduping by VIN.
+- **Autotrader** — `crawl_autotrader.py`
+- **Cars.com** — `cars_com.py`
+- **TrueCar** — `truecar.py`
+
+After collecting hits, the pipeline optionally fetches each VDP (vehicle
+detail page) to extract the signed CarFax URL, owner-count badge, and
+fully-resolved link, and can run the full CarFax report through an LLM to
+assess likely private vs dealer-only ownership.
 
 ## Setup
 
@@ -31,7 +40,30 @@ Create `.env` with your OpenAI key (only needed for `--analyze` / `--analyze-onl
 OPENAI_API_KEY=sk-...
 ```
 
-## Quick start
+## Sweep scripts (recommended entry point)
+
+Each target vehicle has a shell script that fans out across **all seven
+sources**, VIN-merges the outputs, and (with `--sync`) unions the result into
+`results.json` and refreshes the visualizer:
+
+```bash
+./search_all_models.sh --sync   # X5/X6/X7 M60i + XM + 760i xDrive, 2025-26
+./search_x56m.sh --year 2026    # X5 M60i / X5 M / X6 M60i / X6 M, one year
+./search_x7_40i.sh --sync       # X7 xDrive40i
+./search_760.sh                 # 7 Series 760i xDrive
+./search_xm.sh --year 2026      # all XM trims (min-miles defaults to 0)
+```
+
+Common flags: `--sync`, `--year Y[-Y]`, `--min-miles` / `--max-miles`,
+`--exclude-states`, `--skip-fetch --skip-vdp` (fast pass, no VDP/CarFax
+enrichment), `--headless`, and per-source `--skip-autotrader` /
+`--skip-cars` / `--skip-truecar` / `--skip-platforms`.
+
+The script headers document the exact model/trim designation each source
+expects (they differ: `X5:M60i` vs `bmw/x5/m60i` vs `trims[]=bmw-x5-m60i` vs
+`mmt[]=bmw_x5_m60i`).
+
+## Dealer-platform search (`search_inventory.py`)
 
 Default search (`2025–2026 BMW X7 M60i`, `60–15,000 mi`, all conditions):
 
@@ -39,7 +71,7 @@ Default search (`2025–2026 BMW X7 M60i`, `60–15,000 mi`, all conditions):
 uv run search_inventory.py
 ```
 
-Custom search:
+Custom searches:
 
 ```bash
 uv run search_inventory.py --trim xDrive40i --max-miles 20000 --out x7_40i.json
@@ -50,11 +82,10 @@ uv run search_inventory.py --skip-fetch              # fast, no CarFax / VDP pas
 ### Sweeping multiple model/trim combos in one run
 
 Pass `--search MODEL[:TRIM]` once per pair to sweep them all together. Each
-spec hits DDC + DI independently and results are VIN-deduped at the end.
-Omit `:TRIM` (or leave it blank) to pull any trim of that model.
+spec hits every supported platform independently and results are VIN-deduped
+at the end. Omit `:TRIM` (or leave it blank) to pull any trim of that model.
 
 ```bash
-# Default tracked sweep: X7 M60i + X7 xDrive40i + X5 M60i + any XM trim.
 uv run search_inventory.py \
   --search X7:M60i \
   --search X7:xDrive40i \
@@ -76,10 +107,10 @@ uv run search_inventory.py --fetch-carfax --analyze
 Re-analyze an existing results file without re-searching:
 
 ```bash
-uv run search_inventory.py --analyze-only results.json --fetch-carfax
+uv run search_inventory.py --analyze-only some_results.json --fetch-carfax
 ```
 
-## Arguments
+### Arguments
 
 | Flag | Default | Notes |
 | --- | --- | --- |
@@ -91,16 +122,23 @@ uv run search_inventory.py --analyze-only results.json --fetch-carfax
 | `--min-miles` | `60` | |
 | `--max-miles` | `15000` | |
 | `--type` | `all` | `new`, `used`, or `all` |
-| `--out` | `results.json` | |
+| `--out` | `search_output.json` | **cannot be `results.json`** — see below |
 | `--skip-fetch` | off | skip VDP fetch (no CarFax URLs) |
 | `--fetch-carfax` | off | fetch full CarFax reports via real Chrome CDP |
 | `--analyze` | off | run LLM ownership assessment (needs `OPENAI_API_KEY`) |
 | `--analyze-only FILE` | — | skip search, just re-analyze `FILE` |
 | `--llm-model` | `gpt-4o-mini` | any OpenAI chat model |
 
+### `results.json` is protected
+
+`results.json` is the persistent, ever-growing dataset. Every crawler
+**refuses** `--out results.json` and writes standalone files instead. The only
+writer is `merge_results.py`, which unions by VIN and never drops existing
+vehicles.
+
 ## Output schema
 
-Each vehicle in `results.json`:
+Each vehicle record:
 
 ```
 vin, stockNumber, year, make, model, trim, type, odometer,
@@ -135,8 +173,7 @@ Any page still blocked after all passes keeps its `vinLink` +
 profile `~/.bmw_browser_profile`) through an Autotrader search URL and
 pulls the structured listing data embedded in
 `<script id="__NEXT_DATA__">` on every SRP page (no per-listing detail
-fetch needed). Useful for picking up inventory on platforms that neither
-`search_inventory.py` nor `cars_com.py` covers.
+fetch needed).
 
 ```bash
 # Defaults: 2025 BMW X7 M60i ≤ 15k mi nationwide, CA dropped.
@@ -146,8 +183,8 @@ uv run crawl_autotrader.py
 # query params, NOT as a path slug like /2025-2026/. Autotrader treats
 # range slugs as a wildcard and serves spotlight ads from other makes.
 uv run crawl_autotrader.py \
-  --url 'https://www.autotrader.com/cars-for-sale/all-cars/bmw/x7/m60i/livonia-mi?mileage=15000&searchRadius=0&startYear=2025&endYear=2026' \
-  --out autotrader_results.json
+  --url 'https://www.autotrader.com/cars-for-sale/all-cars/bmw/x7/m60i/detroit-mi?mileage=15000&searchRadius=0&startYear=2025&endYear=2026' \
+  --out autotrader_x7_m60i.json
 
 # Exclude more states than just CA
 uv run crawl_autotrader.py --exclude-states CA,HI
@@ -165,26 +202,6 @@ auto-derived from the URL path, to drop spotlight/sponsored ads that
 Autotrader mixes into the SRP `inventory` blob. Pass `--trim ''` to
 keep everything regardless of trim.
 
-### Sweeping all four tracked models
-
-```bash
-uv run crawl_autotrader.py --max-pages 30 \
-  --url 'https://www.autotrader.com/cars-for-sale/all-cars/bmw/x7/m60i/livonia-mi?mileage=15000&searchRadius=0&startYear=2025&endYear=2026' \
-  --out autotrader_x7_m60i.json
-
-uv run crawl_autotrader.py --max-pages 30 \
-  --url 'https://www.autotrader.com/cars-for-sale/all-cars/bmw/x7/xdrive40i/livonia-mi?mileage=15000&searchRadius=0&startYear=2025&endYear=2026' \
-  --out autotrader_x7_40i.json
-
-uv run crawl_autotrader.py --max-pages 30 \
-  --url 'https://www.autotrader.com/cars-for-sale/all-cars/bmw/x5/m60i/livonia-mi?mileage=15000&searchRadius=0&startYear=2025&endYear=2026' \
-  --out autotrader_x5_m60i.json
-
-uv run crawl_autotrader.py --max-pages 30 \
-  --url 'https://www.autotrader.com/cars-for-sale/all-cars/bmw/xm/livonia-mi?mileage=15000&searchRadius=0&startYear=2025&endYear=2026' \
-  --out autotrader_xm.json
-```
-
 ## Cars.com crawler
 
 `cars_com.py` scrapes a `cars.com/shopping/results/` URL (whatever filters you
@@ -197,8 +214,8 @@ trim.
 ```bash
 # Build the URL on cars.com, then hand it to the crawler
 uv run cars_com.py \
-  --url 'https://www.cars.com/shopping/results/?mileage_min=60&mileage_max=15000&stock_type=cpo&trims[]=bmw-x7-m60i&models[]=bmw-x7&zip=48335&maximum_distance=9999&year_min=2025&year_max=2026&makes[]=bmw&sort=best_match_desc' \
-  --out cars_com_results.json
+  --url 'https://www.cars.com/shopping/results/?mileage_min=60&mileage_max=15000&stock_type=cpo&trims[]=bmw-x7-m60i&models[]=bmw-x7&zip=48226&maximum_distance=9999&year_min=2025&year_max=2026&makes[]=bmw&sort=best_match_desc' \
+  --out cars_com_x7_m60i.json
 
 # Exclude extra states (CA is dropped by default)
 uv run cars_com.py --url '…' --exclude-states CA,HI
@@ -211,7 +228,7 @@ written with `vdpStatus: "blocked"`, 404s as `"not_found"`.
 ### Anti-bot (DataDome) handling
 
 cars.com fronts its pages with DataDome, which returns **HTTP 403** to the
-plain `requests` client. The crawler now detects this and automatically falls
+plain `requests` client. The crawler detects this and automatically falls
 back to a stealthed, persistent-profile Chromium (dedicated profile at
 `~/.cars_com_browser_profile`, separate from the other crawlers so concurrent
 runs don't fight over Chrome's single-instance lock). Stale `Singleton*` locks
@@ -239,6 +256,27 @@ keep VIN, year, model, trim, mileage, price, and CPO flag:
 uv run cars_com.py --url '…' --skip-vdp --out cars_com_x7.json
 ```
 
+## TrueCar crawler
+
+`truecar.py` crawls a TrueCar used-listings URL by parsing the Apollo GraphQL
+state embedded in each server-rendered page. Query-param URLs are normalized
+into SEO path segments (e.g. `…/location-nationwide/year-2025-max-2025/mileage-15000/`)
+because those pass TrueCar's PerimeterX protection on plain requests;
+pagination beyond page 1 falls back to the stealth browser.
+
+```bash
+uv run truecar.py \
+  --url 'https://www.truecar.com/used-cars-for-sale/listings/inventory/?mmt[]=bmw_xm&yearLow=2025&mileageHigh=15000&searchRadius=5000' \
+  --out truecar_xm.json
+
+# One-time if PerimeterX starts blocking the browser fallback:
+uv run truecar.py --warmup --url 'https://www.truecar.com/used-cars-for-sale/listings/'
+```
+
+Model, trim, year, and mileage are also enforced client-side (`--trim`)
+because TrueCar's URL trim filter is unreliable. Defaults: 60–15,000 mi,
+CA excluded, `--max-pages 34`.
+
 ## Merging sources
 
 `merge_results.py` unions any number of result files into one, deduping by
@@ -248,14 +286,14 @@ more populated authoritative fields (`daysOnLot`, `dateInStock`, `carfaxUrl`,
 `internetPrice`). Ties go to the earlier `--inputs` entry.
 
 ```bash
-# DDC/DI are richer than cars.com / Autotrader, so list results.json first.
+# Platform results are richer than aggregators, so list results.json first.
 uv run merge_results.py \
-  --inputs results.json cars_com_results.json \
+  --inputs results.json new_sweep.json \
   --out results.json
 
-# Drop unwanted states during the merge too, union all three sources
+# Drop unwanted states during the merge too
 uv run merge_results.py \
-  --inputs results.json autotrader_results.json cars_com_results.json \
+  --inputs results.json autotrader_x.json cars_com_x.json \
   --out results.json \
   --exclude-states CA
 ```
@@ -266,41 +304,36 @@ CarFax URL from source A plus a price from source B), and swaps
 aggregator dealer URLs (`cars.com`, `edmunds.com`, …) for a real dealer
 domain when one of the other sources has it.
 
-Typical pipeline to augment the existing feed:
+## Dealer directory (one-time / rerun to refresh)
+
+`master_dealers.json` is the 377-dealer roster with each store's platform and
+harvested API identifiers. To rebuild it from scratch:
 
 ```bash
-uv run cars_com.py --url '…' --out cars_com_results.json
-uv run crawl_autotrader.py --url '…' --out autotrader_results.json
-uv run merge_results.py \
-  --inputs results.json autotrader_results.json cars_com_results.json \
-  --out results.json \
-  --exclude-states CA
-(cd ../visualizer && npm run sync)
+uv run build_master_dealers.py     # merge dealer lists + verify URLs → master_dealers.json
+uv run platform_census.py          # detect each dealer's website platform
+uv run platform_census.py --report-only   # regenerate coverage_report.md
+uv run harvest_di_ccid.py          # harvest Cars Commerce ccid/apiKey (DealerInspire)
+uv run harvest_dealeron.py         # harvest DealerOn dealerId/pageId
 ```
 
-## Dealer discovery (one-time / rerun to refresh)
-
-The crawler reads dealer metadata from `dealers.json`. To regenerate it:
-
-```bash
-uv run sweep_ddc.py         # discovers Dealer.com BMW/MINI dealers → bmw_ddc_dealers.json
-uv run sweep_dealers.py     # discovers DealerInspire BMW dealers via Algolia
-uv run discover_dealers.py  # detects platform for arbitrary URLs
-uv run discover_dealers.py --from-json   # retry any still-unknown entries
-uv run discover_dealers.py --url https://www.foo.com
-```
+Legacy discovery scripts (still functional, superseded by the census):
+`sweep_ddc.py`, `sweep_dealers.py`, `discover_dealers.py`.
 
 ## Files
 
-- `search_inventory.py` — main search + CarFax + LLM pipeline
-- `cars_com.py` — Cars.com search scraper (complements DDC/DI)
+- `search_inventory.py` — dealer-platform search engine (DDC / DI / DealerOn / Team Velocity) + CarFax + LLM pipeline
 - `crawl_autotrader.py` — Autotrader SRP crawler (Playwright + stealth)
+- `cars_com.py` — Cars.com search scraper
+- `truecar.py` — TrueCar crawler (Apollo-state parser)
 - `merge_results.py` — VIN-dedupes N result files into one
-- `sweep_ddc.py` — Dealer.com dealer discovery
-- `sweep_dealers.py` — DealerInspire dealer discovery
-- `discover_dealers.py` — platform detection for individual URLs
-- `algolia_replay.py` — raw HAR replay for debugging Algolia queries
-- `dealers.json` — merged dealer directory (both platforms)
-- `bmw_ddc_dealers.json` — raw DDC sweep output
-- `bmw_di_slugs.json` — raw DI slug sweep output
-- `perplexity_dealers.txt` — fallback dealer→URL lookup (for blank `dealerUrl`s)
+- `search_*.sh` — per-vehicle sweep scripts (all sources + merge)
+- `master_dealers.json` — dealer roster w/ platform + harvested API ids
+- `build_master_dealers.py` — roster builder (merge + URL verification)
+- `platform_census.py` — platform detection + `coverage_report.md` generator
+- `harvest_di_ccid.py` / `harvest_dealeron.py` — per-platform credential harvesters
+- `coverage_report.md` — nationwide platform census results
+- `dealers.json` / `bmw_ddc_dealers.json` / `bmw_di_slugs.json` — legacy dealer directories
+- `perplexity_dealers.txt` — dealer name/city/state/URL seed list
+- `carfax_utils.py` — CarFax URL/report helpers
+- `algolia_replay.py` — raw HAR replay for debugging (legacy)

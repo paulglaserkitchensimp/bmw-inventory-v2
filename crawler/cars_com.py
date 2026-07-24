@@ -744,6 +744,11 @@ def main() -> int:
                          "headless runs sail through. Run this first when blocked.")
     args = ap.parse_args()
 
+    # results.json is the persistent union file — only merge_results.py writes it.
+    if os.path.basename(args.out) == "results.json":
+        ap.error("refusing to write results.json — use another output file and "
+                 "merge it in via merge_results.py")
+
     if args.warmup:
         return _warmup(args.url)
 

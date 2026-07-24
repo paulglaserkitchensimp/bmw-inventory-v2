@@ -3,6 +3,7 @@ import { useVehicles, applyFilters } from './hooks/useVehicles'
 import { useGeocoder } from './hooks/useGeocoder'
 import { useAnnotations } from './hooks/useAnnotations'
 import { usePersistedFilters } from './hooks/usePersistedFilters'
+import { useDarkMode } from './hooks/useDarkMode'
 import FilterPanel from './components/FilterPanel'
 import VehicleTable from './components/VehicleTable'
 import MapView from './components/MapView'
@@ -18,6 +19,7 @@ export default function App() {
   const [filters, setFilters] = usePersistedFilters()
   const [selected, setSelected] = useState<Vehicle | null>(null)
   const [view, setView] = useState<ViewMode>('split')
+  const { dark, toggleDark } = useDarkMode()
 
   const filtered = useMemo(
     () => applyFilters(vehicles, filters, annotations),
@@ -53,18 +55,27 @@ export default function App() {
           )} vehicles
         </div>
 
-        <div className="ml-auto flex items-center gap-1 bg-gray-100 rounded p-0.5">
-          {(['table', 'split', 'map'] as ViewMode[]).map(m => (
-            <button
-              key={m}
-              onClick={() => setView(m)}
-              className={`px-3 py-1 rounded text-xs font-medium transition-colors capitalize ${
-                view === m ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-800'
-              }`}
-            >
-              {m}
-            </button>
-          ))}
+        <div className="ml-auto flex items-center gap-2">
+          <div className="flex items-center gap-1 bg-gray-100 rounded p-0.5">
+            {(['table', 'split', 'map'] as ViewMode[]).map(m => (
+              <button
+                key={m}
+                onClick={() => setView(m)}
+                className={`px-3 py-1 rounded text-xs font-medium transition-colors capitalize ${
+                  view === m ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-800'
+                }`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={toggleDark}
+            title={dark ? 'Switch to light mode' : 'Switch to dark mode'}
+            className="px-2 py-1 rounded text-sm bg-gray-100 text-gray-500 hover:text-gray-800 transition-colors"
+          >
+            {dark ? '☀️' : '🌙'}
+          </button>
         </div>
       </header>
 
@@ -90,7 +101,7 @@ export default function App() {
 
           {/* Map pane */}
           {(view === 'map' || view === 'split') && (
-            <div className={view === 'split' ? 'w-1/2' : 'w-full'}>
+            <div className={`${view === 'split' ? 'w-1/2' : 'w-full'} min-w-0`}>
               <MapView
                 vehicles={filtered}
                 geoMap={geoMap}
@@ -100,24 +111,26 @@ export default function App() {
               />
             </div>
           )}
+
+          {/* Inline detail pane — sits beside the table/map, which shrink to
+              make room (flex siblings) instead of being covered by an overlay.
+              `key` forces a remount when the user picks a different row so
+              local draft state (notes, LH URL) re-initializes from the new
+              annotation. */}
+          {selected && (
+            <VehicleDetail
+              key={selected.vin}
+              vehicle={selected}
+              onClose={() => setSelected(null)}
+              annotations={annotations}
+              onSetTag={setTag}
+              onSetComment={setComment}
+              onSetLeasehackrUrl={setLeasehackrUrl}
+              onSetListingUrl={setListingUrl}
+            />
+          )}
         </main>
       </div>
-
-      {/* Side drawer for selected vehicle.
-          `key` forces a remount when the user picks a different row so local
-          draft state (notes, LH URL) re-initializes from the new annotation. */}
-      {selected && (
-        <VehicleDetail
-          key={selected.vin}
-          vehicle={selected}
-          onClose={() => setSelected(null)}
-          annotations={annotations}
-          onSetTag={setTag}
-          onSetComment={setComment}
-          onSetLeasehackrUrl={setLeasehackrUrl}
-          onSetListingUrl={setListingUrl}
-        />
-      )}
     </div>
   )
 }

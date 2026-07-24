@@ -5,13 +5,13 @@ import { TAG_META } from '../hooks/useAnnotations'
 import type { GeoMap } from '../hooks/useGeocoder'
 import { badgeClass, badgeLabel, badgeLabelShort } from '../utils/carfaxBadge'
 
-type SortKey = 'distance' | 'odometer' | 'daysOnLot' | 'internetPrice' | 'year' | 'dealerState'
+type SortKey = 'distance' | 'odometer' | 'daysOnLot' | 'internetPrice' | 'year' | 'dealerState' | 'dealerName'
 type SortDir = 'asc' | 'desc'
 
-// Proximity sort origin — user's home area. Change these coords to recalibrate.
-// 48335 = Farmington Hills, MI
-export const ORIGIN_COORDS: [number, number] = [42.4828, -83.3767]
-export const ORIGIN_LABEL = '48335'
+// Proximity sort origin — change these coords to recalibrate.
+// 48226 = Detroit, MI
+export const ORIGIN_COORDS: [number, number] = [42.3316, -83.0466]
+export const ORIGIN_LABEL = '48226'
 
 function haversineMiles(a: [number, number], b: [number, number]): number {
   const R = 3958.8
@@ -159,8 +159,11 @@ export default function VehicleTable({
   }, [vehicles, geoMap])
 
   const sorted = useMemo(() => {
-    const getKey = (v: Vehicle): number | string | null =>
-      sort.key === 'distance' ? distanceByVin[v.vin] : (v[sort.key] as number | string | null)
+    const getKey = (v: Vehicle): number | string | null => {
+      if (sort.key === 'distance') return distanceByVin[v.vin]
+      if (sort.key === 'dealerName') return v.dealerName?.toLowerCase() ?? null
+      return v[sort.key] as number | string | null
+    }
 
     const cmp = (a: Vehicle, b: Vehicle) => {
       const va = getKey(a) ?? (sort.dir === 'asc' ? Infinity : -Infinity)
@@ -199,7 +202,7 @@ export default function VehicleTable({
             <SortHeader label="Price" col="internetPrice" sort={sort} onSort={toggleSort} />
             <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Color</th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">CarFax</th>
-            <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Dealer</th>
+            <SortHeader label="Dealer" col="dealerName" sort={sort} onSort={toggleSort} />
             <SortHeader label="State" col="dealerState" sort={sort} onSort={toggleSort} />
             <SortHeader label={`Dist (${ORIGIN_LABEL})`} col="distance" sort={sort} onSort={toggleSort} />
             <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Links</th>

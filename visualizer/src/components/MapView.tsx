@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -10,6 +11,19 @@ import iconUrl from 'leaflet/dist/images/marker-icon.png'
 import iconRetinaUrl from 'leaflet/dist/images/marker-icon-2x.png'
 import shadowUrl from 'leaflet/dist/images/marker-shadow.png'
 L.Icon.Default.mergeOptions({ iconUrl, iconRetinaUrl, shadowUrl })
+
+// Leaflet doesn't watch its container size — when the inline detail pane opens
+// or closes the map pane resizes and tiles would go stale/gray without this.
+function ResizeEffect() {
+  const map = useMap()
+  useEffect(() => {
+    const container = map.getContainer()
+    const observer = new ResizeObserver(() => map.invalidateSize())
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [map])
+  return null
+}
 
 // Fly to selected vehicle's dealer + close any open popup when selection changes
 function SelectionEffect({ coords, selectedVin }: { coords: [number, number] | null; selectedVin: string | null }) {
@@ -81,6 +95,7 @@ export default function MapView({ vehicles, geoMap, selected, onSelect, annotati
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
+        <ResizeEffect />
         <SelectionEffect coords={selectedCoords} selectedVin={selected?.vin ?? null} />
 
         {[...groups.values()].map(g => {

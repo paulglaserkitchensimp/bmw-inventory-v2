@@ -71,7 +71,8 @@ export function applyFilters(
   return vehicles.filter(v => {
     if (filters.search) {
       const q = filters.search.toLowerCase()
-      const haystack = [v.vin, v.dealerName, v.dealerCity, v.dealerState, v.trim, v.extColor]
+      const haystack = [v.vin, v.dealerName, v.dealerCity, v.dealerState, v.trim, v.extColor,
+                        annotations[v.vin]?.comment]
         .join(' ').toLowerCase()
       if (!haystack.includes(q)) return false
     }

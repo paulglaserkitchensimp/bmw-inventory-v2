@@ -1,6 +1,23 @@
+# ── Python ────────────────────────────────────────────────────────────────
 .env
 .venv/
 venv/
 __pycache__/
 *.pyc
 .DS_Store
+
+# ── Crawler output (personal / ephemeral — regenerate with the sweep scripts)
+# Ignore all crawler JSON, then re-include the dealer-directory infrastructure
+# the search engine needs.
+crawler/*.json
+!crawler/master_dealers.json
+!crawler/bmw_ddc_dealers.json
+!crawler/bmw_di_slugs.json
+!crawler/dealers.json
+
+# ── Visualizer data (synced from crawler; annotations are personal notes) ──
+visualizer/public/data/*
+!visualizer/public/data/.gitkeep
+
+# ── Graphify knowledge-graph cache (regenerate with `graphify update .`) ───
+graphify-out/
