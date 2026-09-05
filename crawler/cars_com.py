@@ -762,6 +762,13 @@ def main() -> int:
     cards = _scrape_search(args.url, args.max_pages, session)
     print(f"\n[search] collected {len(cards)} unique listings", flush=True)
     if not cards:
+        # Still write an empty output file. A zero-result run is a normal
+        # outcome (tight filters, thin market, or an anti-bot block that
+        # returned no cards) and search_330i.sh's merge step expects this
+        # file to exist regardless — returning early without writing it
+        # crashed the whole sweep with "file not found" one step later.
+        pathlib.Path(args.out).write_text("[]")
+        print(f"\nWrote 0 records → {args.out}", flush=True)
         return 0
 
     if args.skip_vdp:
