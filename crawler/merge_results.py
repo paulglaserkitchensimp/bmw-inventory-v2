@@ -58,6 +58,7 @@ AUTHORITATIVE_FIELDS = (
     "stockNumber",
     "internetPrice",
     "odometer",
+    "packageSignals",
 )
 
 
@@ -179,6 +180,22 @@ def _merge_records(records: list[dict]) -> dict:
             if k in extra and k not in out:
                 out[k] = extra[k]
 
+    # Option packages are positive evidence: a source that saw "M Sport
+    # Package" on the VDP outranks one that fetched a page without it (or
+    # never fetched one at all). Union the signals rather than letting the
+    # base record's empty/False value win.
+    signals: list[str] = []
+    for r in records:
+        for sig in r.get("packageSignals") or []:
+            if sig not in signals:
+                signals.append(sig)
+    if signals:
+        out["packageSignals"] = signals
+    if any(r.get("mSport") for r in records):
+        out["mSport"] = True
+    elif any(r.get("mSport") is False for r in records):
+        out["mSport"] = False
+
     # Remember every source platform this record was seen on
     platforms = {r.get("platform") for r in records if r.get("platform")}
     if len(platforms) > 1:
@@ -218,11 +235,39 @@ def main() -> None:
         "Comma-separated and/or repeatable. Example: --exclude-states CA,HI",
     )
     ap.add_argument(
+        "--exclude-trim",
+        action="append",
+        default=[],
+        metavar="TERM",
+        help="Drop records whose trim or model contains TERM (case- and "
+        "punctuation-insensitive). Comma-separated and/or repeatable. Applied "
+        "to every input, so it is the one place to strip a drivetrain the "
+        "aggregators can't filter out server-side "
+        "(e.g. --exclude-trim xDrive for a RWD-only search).",
+    )
+    ap.add_argument(
+        "--only-type",
+        default=None,
+        choices=["new", "used", "cpo"],
+        help="Keep only records whose `type` field matches exactly. Needed "
+        "because the aggregator crawlers (Autotrader/Cars.com/TrueCar) have no "
+        "condition filter of their own — search_inventory.py's --type covers "
+        "the four dealer platforms, but a merge of aggregator output has to "
+        "drop non-matching records here.",
+    )
+    ap.add_argument(
         "--dry-run", action="store_true", help="Print summary without writing"
     )
     args = ap.parse_args()
 
     drop_states = _parse_state_list(args.exclude_states)
+    only_type = args.only_type.lower() if args.only_type else None
+    drop_trims = {
+        t.strip().lower()
+        for entry in args.exclude_trim
+        for t in entry.split(",")
+        if t.strip()
+    }
 
     inputs: list[pathlib.Path] = [pathlib.Path(p) for p in args.inputs]
     for p in inputs:
@@ -236,6 +281,8 @@ def main() -> None:
         "total_read": 0,
         "dropped_state": 0,
         "dropped_no_vin": 0,
+        "dropped_trim": 0,
+        "dropped_type": 0,
     }
 
     for path in inputs:
@@ -249,6 +296,14 @@ def main() -> None:
                 continue
             if (rec.get("dealerState") or "").upper() in drop_states:
                 stats["dropped_state"] += 1
+                continue
+            if drop_trims:
+                haystack = f"{rec.get('trim') or ''} {rec.get('model') or ''}".lower()
+                if any(term in haystack for term in drop_trims):
+                    stats["dropped_trim"] += 1
+                    continue
+            if only_type and (rec.get("type") or "").lower() != only_type:
+                stats["dropped_type"] += 1
                 continue
             buckets.setdefault(vin, []).append(rec)
 
@@ -274,6 +329,8 @@ def main() -> None:
         f"\nresult: {len(merged_list)} unique VINs  "
         f"(read {stats['total_read']}, {merged_count} merged across sources, "
         f"{stats['dropped_state']} dropped-state, "
+        f"{stats['dropped_trim']} dropped-trim, "
+        f"{stats['dropped_type']} dropped-type, "
         f"{stats['dropped_no_vin']} dropped-no-vin)"
     )
 

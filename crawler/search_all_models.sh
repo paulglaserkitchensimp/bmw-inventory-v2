@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# ── DISABLED for the 2026 330i hunt ───────────────────────────────────────────
+# This sweep targets a vehicle this fork is not shopping for (X5/X6/X7/XM/7
+# Series). It is kept for reference only; the exec bit has been removed.
+# To re-enable:  chmod +x <this file>   (or run it with: bash <this file>)
+# See docs/330I_DEAL_FINDER.md § "What was disabled".
+# ─────────────────────────────────────────────────────────────────────────────
 # Full M-lineup nationwide sweep — all five target models, <15k miles:
 #   • BMW X5 M60i
 #   • BMW X6 M60i
@@ -40,7 +46,7 @@ MIN_MILES=60
 MAX_MILES=15000
 
 usage() {
-  sed -n '2,24p' "$0" | sed 's/^# \?//'
+  sed -n '9,31p' "$0" | sed 's/^# \?//'
   echo
   echo "Options:"
   echo "  --year Y[-Y]        Model year or range (default: 2025-2026)"

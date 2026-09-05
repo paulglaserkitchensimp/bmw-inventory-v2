@@ -1,5 +1,12 @@
 # BMW Inventory Crawler & Visualizer
 
+> **This fork is hunting a 2026 BMW 330i (RWD, M Sport package or better)
+> within ~750 miles of ZIP 47119 — new or loaner, black preferred, red and
+> white excluded.** Start here: **[`docs/330I_DEAL_FINDER.md`](docs/330I_DEAL_FINDER.md)**
+> — target spec, setup, hosting, bug list, and what was disabled. The sweep is
+> `crawler/search_330i.sh`; the other `search_*.sh` scripts target the upstream
+> author's vehicles and have been disabled (see that doc, § "What was disabled").
+
 Nationwide BMW dealer-inventory search across seven sources — four dealer
 website platforms queried directly, plus three aggregators — merged by VIN
 into one dataset and explored in a local React app with map, filters, and
@@ -78,6 +85,9 @@ VIN-merges the results:
 
 ```bash
 cd crawler
+./search_330i.sh --sync                # ← this fork: 2025-26 330i RWD, new only, 750 mi of 47119
+
+# Upstream sweeps (disabled in this fork — run with `bash <script>` to revive):
 ./search_all_models.sh --sync          # X5/X6/X7 M60i + XM + 760i, 2025-26
 ./search_x56m.sh --year 2026           # X5/X6 M-family for one year
 ./search_x7_40i.sh --sync              # X7 xDrive40i
@@ -124,7 +134,10 @@ middleware, CarFax badges, distance-from-home sorting, dark mode. See
 ## Repo layout
 
 ```
+docs/
+  330I_DEAL_FINDER.md       # ← this fork's customization guide (read first)
 crawler/
+  search_330i.sh            # the 2026 330i sweep (this fork's entry point)
   search_inventory.py       # dealer-platform search engine (DDC/DI/DealerOn/TV)
   crawl_autotrader.py       # Autotrader crawler (Playwright + stealth)
   cars_com.py               # Cars.com crawler (requests + browser fallback)
@@ -142,11 +155,16 @@ visualizer/                 # React + Vite + Tailwind + Leaflet app
 
 ## Configuration notes
 
-- **Home location** (distance sort + aggregator search origin): change
-  `ORIGIN_COORDS`/`ORIGIN_LABEL` in `visualizer/src/components/VehicleTable.tsx`
-  and the `zip=` / `detroit-mi` origin in the sweep scripts. Nationwide radius
-  is used everywhere, so the origin only affects sorting and URL routing.
-- **Default filters**: 60–15,000 miles, CA excluded (adjust per run with flags).
+- **Home location** (distance sort, radius filter, aggregator search origin):
+  `ORIGIN_COORDS`/`ORIGIN_LABEL`/`DEFAULT_RADIUS_MILES` in
+  `visualizer/src/utils/distance.ts`, and `ZIP`/`RADIUS`/`DEALER_STATES` in
+  `crawler/search_330i.sh`. Currently **47119, 750 mi**. Keep the two in sync.
+- **Default filters**: this fork ships `DEFAULT_FILTERS` (`visualizer/src/types.ts`)
+  pre-set to: 750-mile radius, red/white excluded, 0–5,000 miles, M Sport
+  required, condition locked to New (a car titled used/CPO can't be leased as
+  new). Every one is a single click to relax. Upstream sweeps use 60–15,000
+  miles with CA excluded; `search_330i.sh` uses 0–5,000 with `--type new` and
+  no state exclusion (0 so brand-new cars aren't filtered out).
 - Anti-bot fallbacks use persistent Chrome profiles in `~/` (created on first
   use). If a source starts blocking, run its `--warmup` once to clear the
   challenge by hand.

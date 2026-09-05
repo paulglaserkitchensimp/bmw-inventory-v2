@@ -1,3 +1,8 @@
+# ── NOT USED by the 2026 330i hunt ───────────────────────────────────────────
+# Legacy dealer-discovery / debugging script, superseded by platform_census.py
+# + build_master_dealers.py. Kept for reference; nothing in the 330i pipeline
+# calls it. See docs/330I_DEAL_FINDER.md § "What was disabled".
+# ─────────────────────────────────────────────────────────────────────────────
 """
 Discovers BMW dealer platforms and Algolia/inventory config.
 

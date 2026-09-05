@@ -16,7 +16,7 @@ const BADGE_COLORS: Record<string, string> = {
 export function badgeFilterKey(slug: string | null | undefined): string {
   if (!slug) return 'none'
   if (slug.startsWith('vhr:')) return slug
-  let s = slug.toLowerCase().replace(/^valuebadge_/, '').replace(/_black$/, '')
+  const s = slug.toLowerCase().replace(/^valuebadge_/, '').replace(/_black$/, '')
   return s || slug
 }
 

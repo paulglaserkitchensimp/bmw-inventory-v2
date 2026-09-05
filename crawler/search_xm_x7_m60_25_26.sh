@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# ── DISABLED for the 2026 330i hunt ───────────────────────────────────────────
+# This sweep targets a vehicle this fork is not shopping for (X5/X6/X7/XM/7
+# Series). It is kept for reference only; the exec bit has been removed.
+# To re-enable:  chmod +x <this file>   (or run it with: bash <this file>)
+# See docs/330I_DEAL_FINDER.md § "What was disabled".
+# ─────────────────────────────────────────────────────────────────────────────
 # Targeted nationwide sweep:
 #   • BMW XM           2025–2026  (any trim)
 #   • BMW X7 M60i      2025–2026
@@ -36,7 +42,7 @@ AT_QS="mileage=15000&searchRadius=0&startYear=2025&endYear=2026"
 CARS_BASE='https://www.cars.com/shopping/results/?mileage_min=60&mileage_max=15000&zip=48226&maximum_distance=9999&year_min=2025&year_max=2026&makes[]=bmw&sort=best_match_desc'
 
 usage() {
-  sed -n '2,16p' "$0" | sed 's/^# \?//'
+  sed -n '9,23p' "$0" | sed 's/^# \?//'
   echo
   echo "Options:"
   echo "  --sync              Union focused output into results.json + visualizer sync"

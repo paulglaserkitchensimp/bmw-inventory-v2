@@ -4,7 +4,7 @@ import type { AnnotationMap, Tag } from '../hooks/useAnnotations'
 import { TAG_META } from '../hooks/useAnnotations'
 import type { AutoSaveStatus } from '../hooks/useDebouncedAutoSave'
 import { useDebouncedAutoSave } from '../hooks/useDebouncedAutoSave'
-import { parseLeasehackrUrl, discountPercent } from '../utils/leasehackr'
+import { parseLeasehackrUrl, discountPercent, buildLeasehackrPrefillUrl, LEASE_TERMS_MONTHS, LEASE_ANNUAL_MILES } from '../utils/leasehackr'
 import { badgeClass, badgeLabel } from '../utils/carfaxBadge'
 
 interface Props {
@@ -212,6 +212,27 @@ export default function VehicleDetail({
                 Open calculator ↗
               </a>
             )}
+          </div>
+
+          {/* Quick-start links for the two lease structures actually under
+              consideration (see docs/330I_DEAL_FINDER.md). Prefills selling
+              price + term/mileage; MSRP, money factor, and residual still
+              come from the dealer worksheet since those change monthly and
+              aren't available from any crawler source. Paste the resulting
+              calculator URL back into the field below to save the deal. */}
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {LEASE_TERMS_MONTHS.map(months => (
+              <a
+                key={months}
+                href={buildLeasehackrPrefillUrl(v.internetPrice, months, LEASE_ANNUAL_MILES)}
+                target="_blank"
+                rel="noreferrer"
+                title={`Open Leasehackr calculator prefilled with this listing's price, ${months}mo, ${LEASE_ANNUAL_MILES.toLocaleString()} mi/yr`}
+                className="text-xs px-2 py-0.5 rounded border border-blue-300 text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors"
+              >
+                {months}mo / {(LEASE_ANNUAL_MILES / 1000)}k ↗
+              </a>
+            ))}
           </div>
 
           <input

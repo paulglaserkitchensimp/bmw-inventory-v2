@@ -91,12 +91,17 @@ type AnnotationEntry = {
   tag?: string | null
   comment?: string
   leasehackrUrl?: string
+  listingUrl?: string
 }
 
+// Must stay in sync with isEmptyEntry() in src/hooks/useAnnotations.ts. When
+// `listingUrl` was missing here, saving *only* a corrected listing URL (no tag,
+// no note) looked fine in the UI but the server treated the entry as empty and
+// deleted the VIN — the override silently vanished on the next poll/reload.
 function isEmptyEntry(e: unknown): boolean {
   if (!e || typeof e !== 'object') return true
-  const { tag, comment, leasehackrUrl } = e as AnnotationEntry
-  return !tag && !comment && !leasehackrUrl
+  const { tag, comment, leasehackrUrl, listingUrl } = e as AnnotationEntry
+  return !tag && !comment && !leasehackrUrl && !listingUrl
 }
 
 /**

@@ -3,14 +3,29 @@
 A local-only React + Vite app for exploring the crawler's `results.json` —
 filter, sort, map, annotate, and triage dealer inventory.
 
+> **Local-only is not a style choice.** The annotations API (`/api/annotations`)
+> and the geocoding proxy (`/api/geocode`) are Vite **dev-server** middleware
+> (`vite.config.ts`, `configureServer`). They do not exist in `npm run build`
+> output, and not in `npm run preview` either. Deploy the static build somewhere
+> and the app silently loads with no notes, saves into a 404, and shows no
+> distances or map pins. See
+> [`../docs/330I_DEAL_FINDER.md`](../docs/330I_DEAL_FINDER.md) § "Hosting"
+> before deploying anywhere.
+
 ![Tech: React 19, TypeScript, Vite, Tailwind, Leaflet]
 
 ## Features
 
 - **Table / Map / Split views** — toggle from the header. Dark mode toggle too.
 - **Filter panel** — full-text search (VIN, dealer, color, your notes) plus
-  faceted filters for state, trim, mileage, days on lot, price, certified,
-  platform, and CarFax owner count.
+  faceted filters for **max distance from home**, **condition** ("lease
+  eligibility": all/new/not-new, since only a car titled new can be leased as
+  new), **M Sport package**, **exterior color**, state, model, trim, year,
+  mileage, days on lot, price, certified, platform, CarFax badge, and owner
+  count. `DEFAULT_FILTERS` (`src/types.ts`) ships pre-set to this fork's hunt:
+  750 miles of 47119, condition = New, 0–5,000 miles, M Sport required, red
+  and white excluded. Every one of those is a single click to relax — "Reset
+  all" restores exactly this state.
 - **Vehicle detail panel** — opens inline on click; shows CarFax, NHTSA,
   dealer links, LLM ownership reasoning, etc.
 - **Annotations** — cycle each VIN through `interesting → shortlisted →
@@ -19,7 +34,9 @@ filter, sort, map, annotate, and triage dealer inventory.
   to disk at `public/data/annotations.json` via a small Vite dev-server
   middleware (`/api/annotations`).
 - **Sortable table** — every column including dealer and distance from your
-  configured home ZIP (`ORIGIN_COORDS` in `VehicleTable.tsx`).
+  configured home ZIP (`ORIGIN_COORDS` in `src/utils/distance.ts`). The trim
+  cell carries an M Sport pill: **M** = package found on the VDP, **–** = page
+  fetched and nothing found, **?** = never fetched (unknown, check by hand).
 - **Map view** — Leaflet + OpenStreetMap tiles. Dealer city/state pairs are
   geocoded via Nominatim and cached in `localStorage` so subsequent runs
   load instantly.

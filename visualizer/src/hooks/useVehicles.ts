@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react'
 import type { Vehicle, Filters } from '../types'
 import type { AnnotationMap } from './useAnnotations'
 import { badgeFilterKey } from '../utils/carfaxBadge'
+import { colorBucket } from '../utils/color'
+import { vehicleDistance } from '../utils/distance'
+import type { GeoMap } from './useGeocoder'
 
 /** Ordered list of owner-count buckets the filter panel exposes. */
 export const OWNER_COUNT_BUCKETS = ['1', '2+', 'unknown'] as const
@@ -42,6 +45,7 @@ export function applyFilters(
   vehicles: Vehicle[],
   filters: Filters,
   annotations: AnnotationMap = {},
+  geoMap: GeoMap = {},
 ): Vehicle[] {
   const includeStates = Object.entries(filters.states)
     .filter(([, s]) => s === 'include').map(([k]) => k)
@@ -63,6 +67,11 @@ export function applyFilters(
     .filter(([, s]) => s === 'include').map(([k]) => k)
   const excludeTrims = Object.entries(filters.trims)
     .filter(([, s]) => s === 'exclude').map(([k]) => k)
+  const includeColors = Object.entries(filters.colors)
+    .filter(([, s]) => s === 'include').map(([k]) => k)
+  const excludeColors = Object.entries(filters.colors)
+    .filter(([, s]) => s === 'exclude').map(([k]) => k)
+  const maxDistance = filters.maxDistance ? Number(filters.maxDistance) : null
   const includeBadges = Object.entries(filters.carfaxBadges)
     .filter(([, s]) => s === 'include').map(([k]) => k)
   const excludeBadges = Object.entries(filters.carfaxBadges)
@@ -94,6 +103,30 @@ export function applyFilters(
     if (filters.maxDays && v.daysOnLot !== null && v.daysOnLot > Number(filters.maxDays)) return false
     if (filters.minPrice && v.internetPrice !== null && v.internetPrice < Number(filters.minPrice)) return false
     if (filters.maxPrice && v.internetPrice !== null && v.internetPrice > Number(filters.maxPrice)) return false
+    if (includeColors.length || excludeColors.length) {
+      const bucket = colorBucket(v.extColor)
+      if (includeColors.length && !includeColors.includes(bucket)) return false
+      if (excludeColors.length && excludeColors.includes(bucket)) return false
+    }
+    if (maxDistance !== null && Number.isFinite(maxDistance)) {
+      // null distance = dealer city not geocoded yet; keep it rather than
+      // hiding a car we simply haven't located.
+      const d = vehicleDistance(v, geoMap)
+      if (d !== null && d > maxDistance) return false
+    }
+    if (filters.mSport !== null) {
+      // `undefined`/`null` mSport means "never checked". Under the
+      // M-Sport-only filter those stay visible (they're leads to verify);
+      // under the explicit "no M Sport" filter they don't.
+      if (filters.mSport === true && v.mSport === false) return false
+      if (filters.mSport === false && v.mSport !== false) return false
+    }
+    if (filters.isNew !== null) {
+      // v.type is always populated by every crawler source ('new' | 'used' |
+      // 'cpo') — unlike distance/mSport there's no "unknown" case to protect.
+      const isNew = (v.type ?? '').toLowerCase() === 'new'
+      if (isNew !== filters.isNew) return false
+    }
     if (filters.certified !== null && v.certified !== filters.certified) return false
     if (filters.platform && v.platform !== filters.platform) return false
     if (filters.bmwDealer !== null) {

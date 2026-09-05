@@ -28,39 +28,47 @@ export function useDebouncedAutoSave<T>(
   onSave: (value: T) => void,
   delayMs: number = 300,
 ): AutoSaveStatus {
-  const [status, setStatus] = useState<AutoSaveStatus>('idle')
+  // `pending` is pure derived state (draft ≠ saved), so it is computed during
+  // render instead of being pushed into an effect. Only the post-commit
+  // "saved" flash needs real state, and it is set from timer callbacks — never
+  // synchronously inside an effect body, which cascades renders.
+  const [flash, setFlash] = useState(false)
 
   const draftRef = useRef(draft)
   const onSaveRef = useRef(onSave)
   const pendingRef = useRef(false)
-  draftRef.current = draft
-  onSaveRef.current = onSave
+
+  // Mirror the latest props into refs from an effect rather than during
+  // render: writing refs in the render body is unsafe when a render is thrown
+  // away. Both refs are only read after commit (debounce timer, unmount
+  // cleanup), so an effect is early enough.
+  useEffect(() => {
+    draftRef.current = draft
+    onSaveRef.current = onSave
+  })
+
+  const dirty = !Object.is(draft, savedValue)
 
   useEffect(() => {
-    if (Object.is(draft, savedValue)) {
+    if (!dirty) {
       pendingRef.current = false
-      // Don't stomp the post-save `saved` flash; let its own timer clear it.
-      setStatus(prev => (prev === 'saved' ? prev : 'idle'))
       return
     }
     pendingRef.current = true
-    setStatus('pending')
     const timer = setTimeout(() => {
-      onSaveRef.current(draft)
+      onSaveRef.current(draftRef.current)
       pendingRef.current = false
-      setStatus('saved')
+      setFlash(true)
     }, delayMs)
     return () => clearTimeout(timer)
-  }, [draft, savedValue, delayMs])
+  }, [draft, dirty, delayMs])
 
   // Auto-clear the `saved` flash ~1.5s after it appears.
   useEffect(() => {
-    if (status !== 'saved') return
-    const t = setTimeout(() => {
-      setStatus(prev => (prev === 'saved' ? 'idle' : prev))
-    }, 1500)
+    if (!flash) return
+    const t = setTimeout(() => setFlash(false), 1500)
     return () => clearTimeout(t)
-  }, [status])
+  }, [flash])
 
   // Flush any pending save on unmount. Empty deps = runs only on mount/unmount,
   // so the cleanup fires exactly once when the host component goes away.
@@ -73,5 +81,6 @@ export function useDebouncedAutoSave<T>(
     }
   }, [])
 
-  return status
+  if (dirty) return 'pending'
+  return flash ? 'saved' : 'idle'
 }

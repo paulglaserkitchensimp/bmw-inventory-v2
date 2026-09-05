@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# ── DISABLED for the 2026 330i hunt ───────────────────────────────────────────
+# This sweep targets a vehicle this fork is not shopping for (X5/X6/X7/XM/7
+# Series). It is kept for reference only; the exec bit has been removed.
+# To re-enable:  chmod +x <this file>   (or run it with: bash <this file>)
+# See docs/330I_DEAL_FINDER.md § "What was disabled".
+# ─────────────────────────────────────────────────────────────────────────────
 # Focused nationwide sweep — BMW XM (any trim), year-parameterized.
 #
 # Sources: Dealer.com + DealerInspire + DealerOn + Team Velocity (via
@@ -39,7 +45,7 @@ MIN_MILES=0
 MAX_MILES=15000
 
 usage() {
-  sed -n '2,23p' "$0" | sed 's/^# \?//'
+  sed -n '9,30p' "$0" | sed 's/^# \?//'
   echo
   echo "Options:"
   echo "  --year Y[-Y]        Model year or range (default: 2026)"
