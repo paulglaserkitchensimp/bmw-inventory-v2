@@ -21,9 +21,12 @@ export default function App() {
   const [view, setView] = useState<ViewMode>('split')
   const { dark, toggleDark } = useDarkMode()
 
+  // geoMap participates in filtering because of the max-distance filter: it
+  // grows as Nominatim resolves dealer cities, so the filtered set has to
+  // recompute when it changes.
   const filtered = useMemo(
-    () => applyFilters(vehicles, filters, annotations),
-    [vehicles, filters, annotations],
+    () => applyFilters(vehicles, filters, annotations, geoMap),
+    [vehicles, filters, annotations, geoMap],
   )
 
   if (loading) return (

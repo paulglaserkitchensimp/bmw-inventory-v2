@@ -4,31 +4,29 @@ import type { AnnotationMap, Tag } from '../hooks/useAnnotations'
 import { TAG_META } from '../hooks/useAnnotations'
 import type { GeoMap } from '../hooks/useGeocoder'
 import { badgeClass, badgeLabel, badgeLabelShort } from '../utils/carfaxBadge'
+import { ORIGIN_LABEL, vehicleDistance } from '../utils/distance'
 
 type SortKey = 'distance' | 'odometer' | 'daysOnLot' | 'internetPrice' | 'year' | 'dealerState' | 'dealerName'
 type SortDir = 'asc' | 'desc'
 
-// Proximity sort origin — change these coords to recalibrate.
-// 48226 = Detroit, MI
-export const ORIGIN_COORDS: [number, number] = [42.3316, -83.0466]
-export const ORIGIN_LABEL = '48226'
-
-function haversineMiles(a: [number, number], b: [number, number]): number {
-  const R = 3958.8
-  const toRad = (x: number) => (x * Math.PI) / 180
-  const dLat = toRad(b[0] - a[0])
-  const dLon = toRad(b[1] - a[1])
-  const lat1 = toRad(a[0])
-  const lat2 = toRad(b[0])
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2
-  return 2 * R * Math.asin(Math.sqrt(h))
-}
-
-function vehicleDistance(v: Vehicle, geoMap: GeoMap): number | null {
-  if (!v.dealerCity || !v.dealerState) return null
-  const coords = geoMap[`${v.dealerCity}, ${v.dealerState}`]
-  if (!coords) return null
-  return haversineMiles(ORIGIN_COORDS, coords)
+/** Compact M Sport indicator for the trim cell. */
+function MSportPill({ vehicle }: { vehicle: Vehicle }) {
+  if (vehicle.mSport === true) {
+    return (
+      <span title={`Packages found on the VDP: ${(vehicle.packageSignals ?? []).join(', ')}`}
+        className="ml-1 text-xs px-1 py-0.5 rounded bg-emerald-100 text-emerald-800 font-semibold">M</span>
+    )
+  }
+  if (vehicle.mSport === false) {
+    return (
+      <span title="VDP fetched — no M Sport package text found"
+        className="ml-1 text-xs px-1 py-0.5 rounded bg-gray-100 text-gray-400">–</span>
+    )
+  }
+  return (
+    <span title="VDP never fetched or blocked — M Sport status unknown, verify by hand"
+      className="ml-1 text-xs px-1 py-0.5 rounded bg-gray-100 text-gray-400">?</span>
+  )
 }
 
 function SortHeader({ label, col, sort, onSort }: {
@@ -140,6 +138,8 @@ interface Props {
   geoMap: GeoMap
 }
 
+export { ORIGIN_COORDS, ORIGIN_LABEL } from '../utils/distance'
+
 export default function VehicleTable({
   vehicles, onSelect, selected, annotations, onCycleTag, onSetComment, geoMap,
 }: Props) {
@@ -235,6 +235,7 @@ export default function VehicleTable({
                     {v.trim ?? '—'}
                     {v.certified && ' ★'}
                   </span>
+                  <MSportPill vehicle={v} />
                 </td>
                 <td className="px-3 py-2 tabular-nums">
                   {v.odometer !== null ? v.odometer.toLocaleString() : 'new'}

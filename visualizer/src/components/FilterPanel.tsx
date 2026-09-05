@@ -4,6 +4,18 @@ import { TAG_META } from '../hooks/useAnnotations'
 import type { Tag } from '../hooks/useAnnotations'
 import { OWNER_COUNT_BUCKETS } from '../hooks/useVehicles'
 import { badgeFilterLabel, badgeFilterOptions } from '../utils/carfaxBadge'
+import { COLOR_BUCKETS, COLOR_BUCKET_LABEL } from '../utils/color'
+import { ORIGIN_LABEL } from '../utils/distance'
+
+const PLATFORM_LABEL: Record<string, string> = {
+  dealercom: 'Dealer.com',
+  dealerinspire: 'DealerInspire',
+  dealeron: 'DealerOn',
+  teamvelocity: 'Team Velocity',
+  autotrader: 'Autotrader',
+  'cars.com': 'Cars.com',
+  truecar: 'TrueCar',
+}
 
 const OWNER_BUCKET_LABEL: Record<string, string> = {
   '1': '1 owner',
@@ -152,6 +164,12 @@ export default function FilterPanel({ filters, onChange, vehicles }: Props) {
   const models = [...new Set(vehicles.map(v => v.model).filter(Boolean) as string[])].sort()
   const trims  = [...new Set(vehicles.map(v => v.trim).filter(Boolean) as string[])].sort()
   const badgeOptions = badgeFilterOptions(vehicles)
+  const platformOptions: [string, string][] = [
+    ['Any', ''],
+    ...[...new Set(vehicles.map(v => v.platform).filter(Boolean))]
+      .sort()
+      .map(p => [PLATFORM_LABEL[p] ?? p, p] as [string, string]),
+  ]
   const years  = [...new Set(vehicles.map(v => v.year).filter((y): y is number => y !== null))]
     .sort((a, b) => b - a)   // newest first
 
@@ -183,6 +201,56 @@ export default function FilterPanel({ filters, onChange, vehicles }: Props) {
             className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:border-blue-400"
           />
         </div>
+
+        {/* Max distance — the primary market filter. Cars whose dealer city
+            hasn't been geocoded yet have an unknown distance and are always
+            kept, so the list doesn't collapse on first load. */}
+        <div className="mb-4">
+          <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">
+            Max distance from {ORIGIN_LABEL}
+          </label>
+          <div className="flex gap-1 items-center">
+            <input
+              type="number"
+              placeholder="miles"
+              value={filters.maxDistance}
+              onChange={e => onChange({ ...filters, maxDistance: e.target.value })}
+              className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:border-blue-400"
+            />
+            {['300', '500', '750'].map(mi => (
+              <button key={mi} onClick={() => onChange({ ...filters, maxDistance: mi })}
+                className={`px-1.5 py-1 rounded text-xs border transition-colors ${
+                  filters.maxDistance === mi
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'}`}>
+                {mi}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* M Sport package — read off the VDP text by the crawler. "Unknown"
+            records (no VDP fetched) stay visible under "Yes" so they can be
+            checked by hand rather than silently dropped. */}
+        <div className="mb-4">
+          <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">M Sport Pkg</label>
+          <div className="flex gap-1">
+            {([['All', null], ['Yes + unknown', true], ['No', false]] as const).map(([label, val]) => {
+              const active = filters.mSport === val
+              return (
+                <button key={label} onClick={() => onChange({ ...filters, mSport: val })}
+                  className={`px-2 py-0.5 rounded text-xs border transition-colors ${active ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'}`}>
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <TriStateSelect label="Exterior Color" options={[...COLOR_BUCKETS]}
+          selected={filters.colors}
+          renderLabel={k => COLOR_BUCKET_LABEL[k] ?? k}
+          onChange={v => onChange({ ...filters, colors: v })} />
 
         <TriStateSelect label="State" options={states} selected={filters.states}
           onChange={v => onChange({ ...filters, states: v })} />
@@ -255,11 +323,13 @@ export default function FilterPanel({ filters, onChange, vehicles }: Props) {
           </div>
         </div>
 
-        {/* Platform */}
+        {/* Platform — options are derived from the loaded data. The old
+            hardcoded pair hid every DealerOn / Team Velocity / aggregator
+            record behind an unselectable value. */}
         <div className="mb-4">
           <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Platform</label>
-          <div className="flex gap-1">
-            {[['Any', ''], ['Dealer.com', 'dealercom'], ['DealerInspire', 'dealerinspire']].map(([label, val]) => (
+          <div className="flex flex-wrap gap-1">
+            {platformOptions.map(([label, val]) => (
               <button key={val} onClick={() => onChange({ ...filters, platform: val })}
                 className={`px-2 py-0.5 rounded text-xs border transition-colors ${filters.platform === val ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'}`}>
                 {label}

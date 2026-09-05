@@ -1,5 +1,16 @@
 # BMW Crawler
 
+> **This fork's entry point is [`search_330i.sh`](search_330i.sh)** (2026 330i
+> RWD, M Sport, ~750 mi of 47119). The other `search_*.sh` sweeps target the
+> upstream author's vehicles and are disabled. See
+> [`../docs/330I_DEAL_FINDER.md`](../docs/330I_DEAL_FINDER.md).
+>
+> Two flags added for this hunt: `--exclude-trim TERM` (drops a drivetrain the
+> loose trim matcher would otherwise let through — `330i` matches `330i xDrive`)
+> and `--dealer-states ST,ST` (restricts the per-dealer platforms to a region).
+> `--exclude-trim` also exists on `merge_results.py`, where it covers the
+> aggregators too.
+
 Searches BMW inventory nationwide by querying dealer website platforms
 directly, plus three marketplace aggregators for everything else.
 
@@ -47,6 +58,9 @@ sources**, VIN-merges the outputs, and (with `--sync`) unions the result into
 `results.json` and refreshes the visualizer:
 
 ```bash
+./search_330i.sh --sync         # 2026 330i RWD, 0-15k mi, 750 mi of 47119
+
+# Upstream sweeps — disabled in this fork; run via `bash <script>` to revive:
 ./search_all_models.sh --sync   # X5/X6/X7 M60i + XM + 760i xDrive, 2025-26
 ./search_x56m.sh --year 2026    # X5 M60i / X5 M / X6 M60i / X6 M, one year
 ./search_x7_40i.sh --sync       # X7 xDrive40i
@@ -122,6 +136,8 @@ uv run search_inventory.py --analyze-only some_results.json --fetch-carfax
 | `--min-miles` | `60` | |
 | `--max-miles` | `15000` | |
 | `--type` | `all` | `new`, `used`, or `all` |
+| `--exclude-trim TERM` | — | repeatable/comma-separated; drops records whose trim **or** model contains TERM. Needed because trim matching is a loose substring match (`330i` matches `330i xDrive`) |
+| `--dealer-states ST,ST` | — | restrict DealerInspire / DealerOn / Team Velocity / standalone-DDC queries to a region; the OEM Dealer.com call stays nationwide and its results are filtered afterwards |
 | `--out` | `search_output.json` | **cannot be `results.json`** — see below |
 | `--skip-fetch` | off | skip VDP fetch (no CarFax URLs) |
 | `--fetch-carfax` | off | fetch full CarFax reports via real Chrome CDP |
@@ -149,8 +165,16 @@ carfaxBadge, ownerCount,                    # from VDP CarFax badge
 carfaxHistory,                              # full report text (--fetch-carfax)
 ownershipAssessment, ownershipConfidence, ownershipReasoning,  # --analyze
 dealerName, dealerCity, dealerState, dealerUrl, platform,
-link, vinLink, resolvedLink
+link, vinLink, resolvedLink,
+packageSignals, mSport                      # option packages read off the VDP text
 ```
+
+`packageSignals` lists markers found in the VDP body text (`m_sport`,
+`m_sport_pro`, `premium`, `shadowline`, …). `mSport` is tri-state: `true` =
+marker found, `false` = page fetched and nothing found, absent = page never
+fetched or blocked (unknown — verify by hand). See
+[`../docs/330I_DEAL_FINDER.md`](../docs/330I_DEAL_FINDER.md) § "The M Sport
+problem" for what this can and can't tell you.
 
 ## How VDP fetching works
 

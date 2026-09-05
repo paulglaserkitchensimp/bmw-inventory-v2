@@ -92,6 +92,23 @@ def _load_perplexity_dealers(path: str = "perplexity_dealers.txt") -> dict[str, 
 _PERPLEXITY_LOOKUP: dict[str, str] = {}
 
 
+# Optional whitelist of dealer states for the per-dealer platforms (DI,
+# DealerOn, Team Velocity). Set by --dealer-states. Empty = no restriction.
+# Dealers whose roster entry has no state are always kept — dropping them
+# would silently lose ~16 stores whose census never resolved a location.
+DEALER_STATES: set[str] = set()
+
+
+def _load_dealers(dealers_file: str = "master_dealers.json") -> list[dict]:
+    """Load master_dealers.json, honouring the DEALER_STATES whitelist."""
+    with open(_data_path(dealers_file)) as f:
+        dealers: list[dict] = json.load(f)
+    if not DEALER_STATES:
+        return dealers
+    return [d for d in dealers
+            if not d.get("state") or (d.get("state") or "").upper() in DEALER_STATES]
+
+
 def _get_perplexity_lookup() -> dict[str, str]:
     global _PERPLEXITY_LOOKUP
     if not _PERPLEXITY_LOOKUP:
@@ -246,6 +263,58 @@ from carfax_utils import (
 TEL_RE = re.compile(r'href=["\']tel:([^"\']+)["\']', re.IGNORECASE)
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Option-package detection (330i hunt: "M Sport package or better")
+#
+# No dealer platform exposes a structured option list in its search API, so the
+# only reliable signal is the VDP body text, which lists packages either by
+# marketing name ("M Sport Package") or by BMW option code (337 = M Sport
+# package on the G20 3 Series; ZMP = M Sport Pro).  We scan the fetched VDP HTML
+# for both and record what we saw, so the visualizer can filter on it.
+#
+# `mSport` is deliberately tri-state:
+#   True  – a package marker was found in the page text
+#   False – the page was fetched successfully and had no marker
+#   None  – the page was never fetched / was blocked (unknown, verify by hand)
+# ──────────────────────────────────────────────────────────────────────────────
+PACKAGE_PATTERNS: list[tuple[str, re.Pattern]] = [
+    ("m_sport_pro",   re.compile(r"\bM\s*Sport(?:\s*Package)?\s*Pro\b", re.I)),
+    ("m_sport",       re.compile(r"\bM\s*Sport\s*(?:Package|Pkg)\b", re.I)),
+    ("m_sport",       re.compile(r"\bPackage\s*337\b|\bOption\s*337\b", re.I)),
+    ("shadowline",    re.compile(r"\bShadowline\b", re.I)),
+    ("premium",       re.compile(r"\bPremium\s*(?:Package|Pkg)\b", re.I)),
+    ("dynamic_handling", re.compile(r"\bDynamic\s*Handling\s*(?:Package|Pkg)\b", re.I)),
+    ("m_sport_brakes", re.compile(r"\bM\s*Sport\s*Brakes?\b", re.I)),
+    ("driving_assist", re.compile(r"\bDriving\s*Assistance\b", re.I)),
+    ("parking_assist", re.compile(r"\bParking\s*Assistance\b", re.I)),
+    ("cold_weather",  re.compile(r"\bCold\s*Weather\s*(?:Package|Pkg)\b", re.I)),
+]
+
+# Strip scripts/styles/tags before pattern matching so we don't get false hits
+# from JSON blobs, analytics payloads, or CSS class names.
+_TAG_STRIP_RE = re.compile(r"<(script|style)\b[^>]*>.*?</\1>", re.I | re.S)
+_TAGS_RE = re.compile(r"<[^>]+>")
+
+
+def _visible_text(html: str) -> str:
+    txt = _TAG_STRIP_RE.sub(" ", html)
+    txt = _TAGS_RE.sub(" ", txt)
+    return re.sub(r"\s+", " ", txt)
+
+
+def extract_packages(html: str) -> dict:
+    """Return {'packageSignals': [...], 'mSport': bool} for one VDP page."""
+    text = _visible_text(html)
+    found: list[str] = []
+    for name, pat in PACKAGE_PATTERNS:
+        if name not in found and pat.search(text):
+            found.append(name)
+    return {
+        "packageSignals": found,
+        "mSport": ("m_sport" in found) or ("m_sport_pro" in found),
+    }
+
+
 def _normalize_phone(raw: str | None) -> str | None:
     """Return a phone as '###-###-####', or None if unparseable."""
     if not raw:
@@ -261,6 +330,7 @@ def _normalize_phone(raw: str | None) -> str | None:
 def _extract_vdp_signals(html: str) -> dict:
     """Parse CarFax + contact signals (signed URL, owner count, phone) from raw VDP HTML."""
     out: dict = extract_from_html(html)
+    out.update(extract_packages(html))
     # First tel: link on the page — typically the dealer's main sales line.
     for raw in TEL_RE.findall(html):
         phone = _normalize_phone(raw)
@@ -875,8 +945,7 @@ def _load_standalone_ddc_dealers() -> list[dict]:
     master_dealers.json DDC records whose `site_id` is absent from the OEM
     Dealer.com sweep (bmw_ddc_dealers.json)."""
     try:
-        with open(_data_path("master_dealers.json")) as f:
-            master = json.load(f)
+        master = _load_dealers()
     except FileNotFoundError:
         return []
     try:
@@ -1066,8 +1135,7 @@ def search_di(make: str, model: str, years: list[int] | None, trim: str | None,
     fires one threaded request per dealer. Dealers without a ccid are skipped
     (run harvest_di_ccid.py to fill them in).
     """
-    with open(_data_path(dealers_file)) as f:
-        dealers: list[dict] = json.load(f)
+    dealers = _load_dealers(dealers_file)
 
     di_dealers = [d for d in dealers if _is_di(d) and d.get("cc_ccid")]
     missing = sum(1 for d in dealers if _is_di(d) and not d.get("cc_ccid"))
@@ -1479,8 +1547,7 @@ def search_teamvelocity(make: str, model: str, years: list[int] | None,
     plain requests and headless Chrome; those need the shared browser profile to
     have earned trust cookies first (see cars_com.py --warmup). Pass
     use_browser=True once the profile is warmed to pick them up."""
-    with open(_data_path(dealers_file)) as f:
-        dealers = json.load(f)
+    dealers = _load_dealers(dealers_file)
     tv_dealers = [d for d in dealers if _is_teamvelocity(d) and d.get("website")]
     if not tv_dealers:
         return []
@@ -1521,8 +1588,7 @@ def search_dealeron(make: str, model: str, years: list[int] | None, trim: str | 
                     vehicle_type: str = "all",
                     dealers_file: str = "master_dealers.json") -> list[dict]:
     """Query every DealerOn dealer via the Cosmos SRP JSON API (threaded)."""
-    with open(_data_path(dealers_file)) as f:
-        dealers = json.load(f)
+    dealers = _load_dealers(dealers_file)
 
     do_dealers = [d for d in dealers if _is_dealeron(d) and d.get("do_dealer_id")]
     missing = sum(1 for d in dealers if _is_dealeron(d) and not d.get("do_dealer_id"))
@@ -1824,6 +1890,21 @@ def main() -> None:
                         help="Maximum odometer (default: 15000)")
     parser.add_argument("--type",          choices=["new", "used", "all"], default="all",
                         help="Vehicle condition (default: all)")
+    parser.add_argument("--exclude-trim",  action="append", default=[], metavar="TERM",
+                        help="Drop records whose trim or model contains TERM "
+                             "(case/punctuation-insensitive). Comma-separated "
+                             "and/or repeatable. Needed because trim matching is "
+                             "a loose substring match, so --search '3 Series:330i' "
+                             "also returns '330i xDrive'; pass --exclude-trim xDrive "
+                             "to keep RWD only.")
+    parser.add_argument("--dealer-states", default="", metavar="ST[,ST...]",
+                        help="Restrict the per-dealer platforms (DealerInspire, "
+                             "DealerOn, Team Velocity, standalone Dealer.com) to "
+                             "dealers in these states. Cuts run time roughly in "
+                             "half for a regional search. The OEM Dealer.com "
+                             "aggregate query is nationwide either way — its "
+                             "results are filtered afterwards. Dealers whose "
+                             "roster entry has no state are always kept.")
     parser.add_argument("--out",         default="search_output.json",
                         help="Output JSON file (default: search_output.json). "
                              "results.json is reserved for the merge/union flow "
@@ -1874,6 +1955,17 @@ def main() -> None:
     if not args.skip_fetch:
         ensure_chrome_debug()
 
+    # Restrict per-dealer platform queries to a set of states (regional search).
+    global DEALER_STATES
+    DEALER_STATES = {s.strip().upper()
+                     for s in args.dealer_states.split(",") if s.strip()}
+    if DEALER_STATES:
+        print(f"Dealer-state whitelist: {','.join(sorted(DEALER_STATES))} "
+              "(per-dealer platforms only)")
+
+    exclude_trims = [t.strip().lower() for entry in args.exclude_trim
+                     for t in entry.split(",") if t.strip()]
+
     years = _parse_years(args.year)
     searches = _parse_searches(args.search, args.model, args.trim)
 
@@ -1920,6 +2012,29 @@ def main() -> None:
         except Exception as e:
             print(f"  Team Velocity error: {e}")
         print()
+
+    # Post-filter excluded trim terms. The platform trim match is a loose
+    # bidirectional substring ("330i" matches "330i xDrive"), so drivetrain
+    # exclusions have to happen here.
+    if exclude_trims:
+        before = len(all_results)
+        all_results = [
+            v for v in all_results
+            if not any(term in f"{v.get('trim') or ''} {v.get('model') or ''}".lower()
+                       for term in exclude_trims)
+        ]
+        if before != len(all_results):
+            print(f"\nExcluded trims {exclude_trims}: {before} → {len(all_results)} vehicles")
+
+    # The OEM Dealer.com feed is nationwide, so apply the state whitelist to
+    # every source once the results are in.
+    if DEALER_STATES:
+        before = len(all_results)
+        all_results = [v for v in all_results
+                       if (v.get("dealerState") or "").upper() in DEALER_STATES
+                       or not v.get("dealerState")]
+        if before != len(all_results):
+            print(f"\nDealer-state filter: {before} → {len(all_results)} vehicles")
 
     # Post-filter miles (DDC odometer comes from trackingAttributes, filtered here)
     before = len(all_results)
