@@ -278,6 +278,28 @@ export default function FilterPanel({ filters, onChange, vehicles }: Props) {
         <RangeRow label="Days on Lot" minKey="minDays" maxKey="maxDays" filters={filters} onChange={onChange} />
         <RangeRow label="Price ($)" minKey="minPrice" maxKey="maxPrice" filters={filters} onChange={onChange} />
 
+        {/* Condition — lease-eligibility gate. Defaults to "New" because a
+            car titled used/CPO can't be leased as new no matter the mileage;
+            switch to "All" to browse the wider used/CPO market. */}
+        <div className="mb-4">
+          <div className="flex items-baseline justify-between mb-1">
+            <label className="block text-xs font-semibold text-gray-500 uppercase">Condition</label>
+            <span className="text-[10px] text-gray-400" title="A car titled used/CPO can't be leased as new, regardless of mileage.">lease eligibility</span>
+          </div>
+          <div className="flex gap-1">
+            {(['All', 'New', 'Not New'] as const).map(opt => {
+              const val = opt === 'All' ? null : opt === 'New'
+              const active = filters.isNew === val
+              return (
+                <button key={opt} onClick={() => onChange({ ...filters, isNew: val })}
+                  className={`px-2.5 py-0.5 rounded text-xs border transition-colors ${active ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'}`}>
+                  {opt}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
         {/* Certified */}
         <div className="mb-4">
           <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Certified</label>

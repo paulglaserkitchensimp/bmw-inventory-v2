@@ -6,9 +6,18 @@
 #     the deepest discounts of the model cycle), rear-wheel drive (xDrive is
 #     excluded at merge time)
 #   • M Sport package or better — flagged post-hoc from the VDP text as
-#     `mSport` / `packageSignals`; filter on it in the visualizer
-#   • New OR loaner/demo/CPO, so MIN_MILES defaults to 0 (a brand-new car
-#     shows 2–30 miles and the repo's usual 60-mile floor would hide it)
+#     `mSport` / `packageSignals`. This is a soft filter, on by default and
+#     toggled off in one click in the visualizer's "M Sport Pkg" control —
+#     the crawler always records the signal either way, so no re-sweep is
+#     needed to try it with the requirement relaxed.
+#   • CONDITION MUST BE "NEW" — not used, not CPO. A service loaner that
+#     hasn't been retailed yet still qualifies (dealers title it "new" in
+#     their own inventory system regardless of odometer), which is exactly
+#     what makes it lease-eligible; a car that's already been retailed once
+#     and bought back is "used" no matter how few miles it has, and can't be
+#     leased as new. 0–5,000 miles (MIN_MILES=0 so a just-arrived unit with
+#     2–30 miles isn't hidden by the repo's used-car-era 60-mile floor).
+#     Toggle with --any-condition to see used/CPO too.
 #   • Market: ~750 miles of Floyds Knobs, IN (Louisville metro)
 #   • Deal structure: 36 or 39 month lease, 12,000 mi/year — see the
 #     Leasehackr prefill buttons in the visualizer's vehicle detail panel
@@ -28,9 +37,10 @@
 #   TrueCar mmt[]    : bmw_3-series  + client-side --trim 330i
 #
 # Usage:
-#   ./search_330i.sh                       # 2025-2026, 0-15k mi, 750 mi radius
+#   ./search_330i.sh                       # 2025-2026, new only, 0-5k mi, 750 mi
 #   ./search_330i.sh --sync
-#   ./search_330i.sh --year 2026 --max-miles 8000 --sync      # 2026-only pass
+#   ./search_330i.sh --year 2026 --sync                       # 2026-only pass
+#   ./search_330i.sh --any-condition --with-truecar --sync    # widen to used/CPO
 #   ./search_330i.sh --skip-fetch --skip-vdp --headless      # fast pass
 
 set -euo pipefail
@@ -44,11 +54,14 @@ SKIP_VDP=false
 SKIP_DEALERS=false
 SKIP_AUTOTRADER=false
 SKIP_CARS_COM=false
-SKIP_TRUECAR=false
+SKIP_TRUECAR=true   # TrueCar is used-only (see below) — pointless while CONDITION=new
 AUTOTRADER_HEADLESS=""
 EXCLUDE_STATES=""
 MIN_MILES=0
-MAX_MILES=15000
+MAX_MILES=5000
+# "new" only, so the car can actually be leased as new — a car titled "used"
+# can't be, regardless of how few miles it has. Loosen with --any-condition.
+CONDITION="new"
 ZIP="47119"
 RADIUS=750
 # Autotrader wants a city slug in the path; the zip= param is what actually
@@ -65,7 +78,7 @@ EXCLUDE_TRIMS="xDrive"
 DEALER_STATES="KY,IN,TN,IL,OH,WV,MO,AL,VA,NC,SC,GA,MI,AR,MS,PA,IA,MD,DE,DC,WI,NJ,NY,LA,OK,KS,MN,FL,CT,NE,TX"
 
 usage() {
-  sed -n '2,31p' "$0" | sed 's/^# \?//'
+  sed -n '2,44p' "$0" | sed 's/^# \?//'
   echo
   echo "Options:"
   echo "  --year Y[-Y]        Model year or range (default: 2025-2026)"
@@ -74,10 +87,12 @@ usage() {
   echo "  --zip ZIP           Search origin (default: 47119)"
   echo "  --radius MI         Aggregator search radius (default: 750)"
   echo "  --include-xdrive    Keep 330i xDrive too (default: RWD only)"
+  echo "  --any-condition     Include used/CPO too (default: new only, for lease eligibility)"
+  echo "  --with-truecar      Run TrueCar anyway (default: skipped — it is used-only)"
   echo "  --nationwide        Ignore the dealer-state whitelist + radius"
   echo "  --skip-fetch / --skip-vdp / --skip-dealers / --skip-autotrader"
   echo "  --skip-cars-com / --skip-truecar / --headless"
-  echo "  --exclude-states S  (default: none)  --min-miles N / --max-miles N"
+  echo "  --exclude-states S  (default: none)  --min-miles N / --max-miles N (default: 0-5000)"
   echo "  -h, --help          Show this help"
 }
 
@@ -89,6 +104,8 @@ while [[ $# -gt 0 ]]; do
     --zip) ZIP="$2"; shift ;;
     --radius) RADIUS="$2"; shift ;;
     --include-xdrive) EXCLUDE_TRIMS="" ;;
+    --any-condition) CONDITION="all" ;;
+    --with-truecar) SKIP_TRUECAR=false ;;
     --nationwide) DEALER_STATES=""; RADIUS=0 ;;
     --skip-fetch) SKIP_FETCH=true ;;
     --skip-vdp) SKIP_VDP=true ;;
@@ -118,7 +135,7 @@ TC_OUT="${PREFIX}_truecar.json"
 MERGE_INPUTS=()
 
 echo "═══════════════════════════════════════════════════════════════"
-echo " Targeted search: 3 Series 330i (${YEAR})   lease target: 36/39mo, 12k mi/yr"
+echo " Targeted search: 3 Series 330i (${YEAR})   condition: ${CONDITION}   lease target: 36/39mo, 12k mi/yr"
 echo " miles: ${MIN_MILES}–${MAX_MILES}   origin: ${ZIP}   radius: ${RADIUS:-nationwide} mi"
 echo " exclude trims: ${EXCLUDE_TRIMS:-none}   exclude states: ${EXCLUDE_STATES:-none}"
 echo " output: ${OUT}"
@@ -133,6 +150,7 @@ if ! $SKIP_DEALERS; then
     --year "$YEAR"
     --min-miles "$MIN_MILES"
     --max-miles "$MAX_MILES"
+    --type "$CONDITION"
     --out "$DDC_OUT"
   )
   if [[ -n "$EXCLUDE_TRIMS" ]]; then dealer_cmd+=(--exclude-trim "$EXCLUDE_TRIMS"); fi
@@ -184,8 +202,10 @@ fi
 if ! $SKIP_TRUECAR; then
   echo
   echo "▶ [4/4] TrueCar — mmt[]=bmw_3-series --trim 330i"
-  # TrueCar only lists used inventory, so this source finds loaners/demos and
-  # never brand-new cars. That is fine — loaners are the target here.
+  # TrueCar's whole URL path is used-cars-for-sale — it structurally cannot
+  # return a "new" record, so this step is skipped by default while
+  # CONDITION=new (see SKIP_TRUECAR above). Runs anyway with --with-truecar,
+  # e.g. when combined with --any-condition to see the used/CPO market too.
   uv run truecar.py \
     --url "https://www.truecar.com/used-cars-for-sale/listings/inventory/?zip=${ZIP}&searchRadius=${RADIUS}&yearLow=${YEAR_LOW}&yearHigh=${YEAR_HIGH}&mileageHigh=${MAX_MILES}&mmt[]=bmw_3-series" \
     --trim 330i \
@@ -208,6 +228,11 @@ echo "▶ Merge focused sweep"
 merge_cmd=(uv run merge_results.py --inputs "${MERGE_INPUTS[@]}" --out "$OUT")
 if [[ -n "$EXCLUDE_STATES" ]]; then merge_cmd+=(--exclude-states "$EXCLUDE_STATES"); fi
 if [[ -n "$EXCLUDE_TRIMS" ]]; then merge_cmd+=(--exclude-trim "$EXCLUDE_TRIMS"); fi
+# search_inventory.py's --type covers the four dealer platforms; the
+# aggregators (Autotrader/Cars.com/TrueCar) have no condition filter of their
+# own, so this is what actually keeps used/CPO listings out of the merged
+# output. merge_results.py doesn't accept "all" here (only new/used/cpo).
+if [[ "$CONDITION" != "all" ]]; then merge_cmd+=(--only-type "$CONDITION"); fi
 "${merge_cmd[@]}"
 
 if $SYNC; then

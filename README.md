@@ -85,7 +85,7 @@ VIN-merges the results:
 
 ```bash
 cd crawler
-./search_330i.sh --sync                # ← this fork: 2026 330i RWD, 750 mi of 47119
+./search_330i.sh --sync                # ← this fork: 2025-26 330i RWD, new only, 750 mi of 47119
 
 # Upstream sweeps (disabled in this fork — run with `bash <script>` to revive):
 ./search_all_models.sh --sync          # X5/X6/X7 M60i + XM + 760i, 2025-26
@@ -160,9 +160,11 @@ visualizer/                 # React + Vite + Tailwind + Leaflet app
   `visualizer/src/utils/distance.ts`, and `ZIP`/`RADIUS`/`DEALER_STATES` in
   `crawler/search_330i.sh`. Currently **47119, 750 mi**. Keep the two in sync.
 - **Default filters**: this fork ships `DEFAULT_FILTERS` (`visualizer/src/types.ts`)
-  pre-set to a 750-mile radius with red and white excluded. Upstream sweeps use
-  60–15,000 miles with CA excluded; `search_330i.sh` uses 0–15,000 with no state
-  exclusion (0 so brand-new cars aren't filtered out).
+  pre-set to: 750-mile radius, red/white excluded, 0–5,000 miles, M Sport
+  required, condition locked to New (a car titled used/CPO can't be leased as
+  new). Every one is a single click to relax. Upstream sweeps use 60–15,000
+  miles with CA excluded; `search_330i.sh` uses 0–5,000 with `--type new` and
+  no state exclusion (0 so brand-new cars aren't filtered out).
 - Anti-bot fallbacks use persistent Chrome profiles in `~/` (created on first
   use). If a source starts blocking, run its `--warmup` once to clear the
   challenge by hand.

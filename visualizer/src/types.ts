@@ -97,6 +97,16 @@ export interface Filters {
    */
   mSport: boolean | null
   /**
+   * Lease-eligibility gate: BMW Financial can only lease a car titled "new"
+   * in the dealer's own inventory system — a service loaner that hasn't been
+   * retailed yet still counts as new regardless of odometer, but a car that
+   * was retailed once and bought back is "used" no matter how few miles it
+   * has. true = only `type === 'new'`, false = only not-new (used/CPO), null
+   * = no filter. Defaults to true; toggle to null/false to browse the
+   * used/CPO market (e.g. after an --any-condition crawler sweep).
+   */
+  isNew: boolean | null
+  /**
    * Per-owner-count-bucket tri-state toggle, same semantics as `states` /
    * `tags`. Keys are the bucket ids `'1' | '2+' | 'unknown'`. Lets the user
    * either narrow to specific owner counts (include) or eliminate them
@@ -121,19 +131,22 @@ export const DEFAULT_FILTERS: Filters = {
   models: {},
   trims: {},
   carfaxBadges: {},
-  minMiles: '',
-  maxMiles: '',
   minDays: '',
   maxDays: '',
   minPrice: '',
   maxPrice: '',
   certified: null,
-  // Pre-set to the 2026 330i hunt: 750-mile radius around 47119, and the two
-  // colours that are non-starters are excluded out of the box. "Reset all" in
-  // the filter panel restores exactly this.
+  // Pre-set to the 2026 330i hunt: 750-mile radius around 47119, the two
+  // colours that are non-starters excluded, a 0-5,000 mile window (new-loaner
+  // range), M Sport required, and condition locked to "new" (lease
+  // eligibility). Every one of these is a single click to relax in the filter
+  // panel — none of them require a re-crawl. "Reset all" restores exactly this.
   maxDistance: '750',
   colors: { white: 'exclude', red: 'exclude' },
-  mSport: null,
+  minMiles: '0',
+  maxMiles: '5000',
+  mSport: true,
+  isNew: true,
   ownerCounts: {},
   bmwDealer: null,
   platform: '',

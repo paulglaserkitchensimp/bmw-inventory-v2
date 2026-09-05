@@ -22,8 +22,8 @@ what I changed, what I disabled, what's broken, and what to build next.
 | Year | 2025–2026 (2025 leftover preferred if one shows up — none seen as of this writing) | `search_330i.sh --year` → every source's URL |
 | Model / trim | 3 Series, 330i | `--search "3 Series:330i"`, aggregator URL slugs |
 | Drivetrain | **RWD only** | `--exclude-trim xDrive` (new flag — see §5) |
-| Package | M Sport or better | `mSport` / `packageSignals` from VDP text (new — see §6) |
-| Condition | New **or** loaner/demo/CPO | `MIN_MILES=0`, `MAX_MILES=15000`, `--type all` |
+| Package | M Sport or better — **on by default, one click to relax** | `mSport` filter, default `true` in `DEFAULT_FILTERS` (see §6) |
+| Condition | **Must be titled "new"** (a service loaner not yet retailed still qualifies — see §5 "Condition") | `MIN_MILES=0`, `MAX_MILES=5000`, `--type new`; UI "Condition" filter defaults to New |
 | Market | ≤750 mi of 47119 | `--dealer-states` + aggregator `zip`/`radius` + UI radius filter |
 | Color | black preferred; **red and white are non-starters** | UI color filter, excluded by default |
 | Deal structure | **Lease, 36 or 39 months, 12,000 mi/yr** | Leasehackr prefill buttons in the vehicle detail panel — see "Lease structure" in §5 |
@@ -150,10 +150,43 @@ originals that matter:
 | Setting | Old scripts | `search_330i.sh` | Why |
 |---|---|---|---|
 | `MIN_MILES` | 60 | **0** | A brand-new 2026 shows 2–30 miles. The 60-mile floor was there to skip *new* cars; you want them. |
+| `MAX_MILES` | 15,000 | **5,000** | Tightened per your spec — anything past 5k on a "new" service loaner starts looking less like a loaner and more like a car someone should have retitled already. |
+| `CONDITION` (`--type`) | — (not a flag on the old scripts) | **`new`**, with `--any-condition` to widen | See "Condition" below — this is a real requirement, not a preference, because a used/CPO title can't be leased as new. |
 | `EXCLUDE_STATES` | `CA` | *(none)* | CA is 1,900 miles away — the radius filter already handles it, and blanket-excluding a state is the wrong tool here. |
 | Radius | `searchRadius=0` (nationwide) | `750` around ZIP `47119` | Your market. |
 | Trim exclusion | — | `--exclude-trim xDrive` | See below. |
 | Dealer states | all 377 | 31-state whitelist | See below. |
+
+### New flag: `--type` / `--only-type` (condition = new)
+
+You clarified the mileage window (0–5,000) is really a proxy for a firmer
+requirement: **the car has to still be titled "new"** so it can be leased as
+new. A service loaner that hasn't been retailed yet qualifies regardless of
+its odometer — dealers title it "new" in their own inventory system either
+way — but a car that was retailed once and bought back is "used" no matter
+how few miles it has, and BMW Financial can't write a new-vehicle lease
+against it. So the mileage cap narrows the *search*, but `type == "new"` is
+what actually enforces the requirement.
+
+That turned up a real gap while wiring it through: `search_inventory.py
+--type new` already worked correctly for three of the four dealer platforms
+(Dealer.com queries new/used as separate pages; DealerOn and Team Velocity
+filter on condition explicitly) — but **DealerInspire's Cars Commerce API has
+no condition parameter at all** and always returns new and used together
+unfiltered. A `--type new` run was silently letting DI's used inventory
+through. Fixed with a global post-filter in `main()` (defensive — it now
+catches this regardless of which source misbehaves) plus the analogous
+`merge_results.py --only-type {new,used,cpo}` for the three aggregators
+(Autotrader/Cars.com/TrueCar), which have no condition filter of their own
+either. `search_330i.sh` passes both automatically; `--any-condition` clears
+them if you want to see the used/CPO market too (§12's build-next list has a
+few reasons you might, e.g. price calibration).
+
+**TrueCar is skipped by default now.** Its entire URL space is
+`used-cars-for-sale` — it is structurally incapable of returning a `type:
+"new"` record, so running it while hunting new-only wastes a couple of
+minutes on a request that will always merge back down to zero. `--with-truecar`
+re-enables it (useful with `--any-condition`).
 
 ### New flag: `--exclude-trim` (in `search_inventory.py` **and** `merge_results.py`)
 
@@ -210,17 +243,27 @@ See §6 — it's the hard part.
 | Origin moved to 47119; haversine + distance extracted to a shared util | `src/utils/distance.ts` (new), `VehicleTable.tsx` |
 | **Max distance filter** (750 default, 300/500/750 shortcuts) | `FilterPanel.tsx`, `useVehicles.ts`, `types.ts` |
 | **Exterior color filter** — free-text colors bucketed to black/white/red/blue/gray/silver/green/other; **white and red excluded by default** | `src/utils/color.ts` (new), `FilterPanel.tsx` |
-| **M Sport filter** + an `M` / `–` / `?` pill in the trim column | `FilterPanel.tsx`, `VehicleTable.tsx` |
+| **M Sport filter** + an `M` / `–` / `?` pill in the trim column — **defaults to "Yes + unknown"**, one click to relax to "All" | `FilterPanel.tsx`, `VehicleTable.tsx`, `types.ts` |
+| **Condition filter** ("lease eligibility") — All / New / Not New on `v.type`, **defaults to New** | `FilterPanel.tsx`, `useVehicles.ts`, `types.ts` |
+| Miles range **defaults to 0–5,000** | `types.ts` |
 | Platform filter options now derived from the data instead of a hardcoded pair | `FilterPanel.tsx` |
 | Four bug fixes | §9 |
 
-`DEFAULT_FILTERS` in `src/types.ts` is now pre-set to your hunt: 750 miles,
-red and white excluded. "Reset all" restores exactly that.
+`DEFAULT_FILTERS` in `src/types.ts` is now pre-set to your full spec: 750
+miles, red and white excluded, 0–5,000 miles, M Sport required, condition
+locked to New. **Every one of those is a single click to relax** — "Reset
+all" in the top of the filter panel restores exactly this state, and each
+control (Condition, M Sport Pkg, Miles, Exterior Color, Max distance) can be
+loosened independently without touching the others or re-running a sweep.
+That's the toggle you asked for on M Sport specifically, and it applies the
+same way to every other default here.
 
 **The unknown-distance rule matters:** a car whose dealer city hasn't been
 geocoded yet has distance `null`, and `null` means *unknown*, not *far*. Those
 rows are kept. Otherwise the table would empty out on first load while Nominatim
-grinds through a few hundred cities at 1 request/second.
+grinds through a few hundred cities at 1 request/second. The Condition filter
+has no such ambiguity — every source always populates `type` — so New/Not New
+is a clean split with nothing held back as "unknown".
 
 ### Lease structure: 36/39 months, 12,000 mi/yr
 
@@ -387,6 +430,14 @@ and leverage in the negotiation. Worth keeping the 750 ring for discovery and a
 4. **`--min-miles 60` hid every new car.** Correct for the used-X7 hunt, wrong
    for yours. `search_330i.sh` defaults to `0`.
 5. **RWD searches silently included xDrive.** §5.
+6. **`--type new` didn't actually exclude DealerInspire's used inventory.**
+   Dealer.com, DealerOn, and Team Velocity all respected the flag; DealerInspire's
+   Cars Commerce API has no condition parameter and always returned new + used
+   together regardless. Found while wiring up the new condition requirement
+   (§5, "Condition"). Fixed with a global post-filter in `search_inventory.py
+   main()` — defensive by design, so it also covers any future source that
+   does the same thing — plus the parallel `merge_results.py --only-type` for
+   the three aggregators, which never had a condition filter at all.
 
 ### Known and not fixed
 
@@ -409,9 +460,11 @@ and leverage in the negotiation. Worth keeping the 750 ring for discovery and a
    `DDC` for Dealer.com and `DI ` for *everything else*, including DealerOn and
    Team Velocity. Cosmetic, but misleading when you're debugging which source
    found what.
-10. **TrueCar is used-only.** Its URL is `used-cars-for-sale`, so it will never
-    surface a brand-new 2026. For a loaner hunt that's fine — arguably ideal —
-    but don't read a thin TrueCar result as a thin market.
+10. **TrueCar is used-only** — its whole URL space is `used-cars-for-sale`. Now
+    that the requirement is a "new" title (§5, "Condition"), TrueCar cannot
+    contribute a matching record at all, so `search_330i.sh` skips it by
+    default. `--with-truecar` reruns it — useful only alongside
+    `--any-condition`, since a used-only source is otherwise pure overhead.
 11. **DealerInspire model-name guessing.** `_cc_filters()` sends
     `model: ["3 Series", "3 Series 330i"]` because some DI dealers store the trim
     in the model field. A dealer that stores the model as just `330i` is missed.
@@ -486,16 +539,21 @@ gone stale.
 
 ### What to actually look at each week
 
-Sort by **Days on Lot, descending**, with M Sport = "Yes + unknown", radius 750,
-red/white excluded. A 2026 that's been sitting 90+ days is a car the dealer is
-paying floorplan interest on and is measured on moving. That's your deal — far
-more than any list price.
+Sort by **Days on Lot, descending**, with the default filters as shipped:
+Condition = New, 0–5,000 miles, M Sport = "Yes + unknown", radius 750,
+red/white excluded. A 2025–26 that's been sitting 90+ days is a car the dealer
+is paying floorplan interest on and is measured on moving. That's your deal —
+far more than any list price.
 
-Then check `daysOnLot` against mileage: a 2026 with 4,000 miles and 30 days on
-lot is a loaner that just came out of service. Those are the best value in the
-whole dataset — full new-car warranty, CPO-eligible, priced as used, and often
-carrying options a customer wouldn't have ordered. Your stated preference for a
-loaner is well-founded.
+Then check `daysOnLot` against mileage: a 330i with 3,000–5,000 miles and
+30+ days on lot is a service loaner that's coming off duty — and because the
+Condition filter is on by default, everything in view is still titled new,
+so it's lease-eligible the same way a zero-mile car is. Full new-car
+warranty, dealer-service history you can usually get in person, and often
+carrying options (M Sport included) a lot-stocking decision put on it rather
+than a retail customer's build sheet. Flip Condition to "Not New" only if you
+want to see the CPO/used side of the same search — those are real cars too,
+just not ones a new lease can be written against.
 
 ### The tag workflow
 
@@ -578,10 +636,17 @@ in the 330i pipeline calls them:
 **Already off by default, left alone:** LLM ownership analysis (`--analyze`,
 needs `OPENAI_API_KEY`), full CarFax report fetching (`--fetch-carfax`).
 
-**Deliberately kept, though you might not expect to need it:** the CarFax badge
-and owner-count columns. For a loaner they matter — a "1 owner" badge on a used
-2026 means the dealership, and an accident flag on a service loaner is a real
-risk that the low mileage will otherwise talk you past.
+**Newly off by default, easy to re-enable:** the TrueCar step in
+`search_330i.sh` (`SKIP_TRUECAR=true`) — it's a used-only source and the
+sweep now requires `type == "new"`, so it would only ever contribute zero
+records. `--with-truecar` turns it back on.
+
+**Deliberately kept, though you might not expect to need it:** the CarFax
+badge and owner-count columns. Even under the new "must be titled new"
+requirement, a service loaner can accumulate a CarFax report — a fender-bender
+during a loan-out, or a service history that starts showing up before the car
+is ever retailed — and a low odometer will otherwise talk you right past it.
+Worth a glance on any loaner candidate even though it's still new.
 
 ---
 
@@ -598,6 +663,24 @@ risk that the low mileage will otherwise talk you past.
   `search_330i.sh --year` default widened from `2026` to `2025-2026`. If a 2025
   never turns up in a sweep, that's the market telling you something (dealers
   clear 2025s fast when a 2026 is one model-year away) — not a search-slug bug.
+- **How hard is "at least M Sport"?** → **Worth trying, but not a hard gate —
+  needs an easy off-switch.** The M Sport filter now defaults to "Yes +
+  unknown" instead of "All", which is the trial you asked for, and it's one
+  click to "All" in the same control if it's filtering out too much (§5,
+  "Visualizer" table). Nothing about this needs a re-crawl either way — the
+  crawler always records the signal; the filter just decides whether to act
+  on it. §6 still applies in full: the underlying signal is VDP text-matching,
+  not a real option list, so treat `mSport: true` as "worth a look," not
+  "verified."
+- **0–5,000 miles, but must be new.** → Built as a firm requirement, not a
+  preference, once you connected it to lease eligibility: a car titled
+  used/CPO can't be leased as new regardless of mileage, so `type == "new"` is
+  what actually gates it, with the 5,000-mile cap narrowing the search on top.
+  `search_330i.sh` defaults to `MAX_MILES=5000 --type new`; the UI's new
+  "Condition" filter defaults to New for the same reason and is a one-click
+  toggle to "All" if you want to see the used/CPO market too (§5, "Condition").
+  This also surfaced a real bug — DealerInspire was leaking used inventory
+  through `--type new` — now fixed (§9, bug #6).
 
 ### Still open
 
@@ -605,18 +688,16 @@ These change what I'd build next, not whether the current setup works.
 
 1. **Budget ceiling / target monthly?** There's a `maxPrice` filter but no
    default set. A 2025–26 330i RWD with M Sport is roughly $48–55k MSRP depending
-   on how it's optioned; loaners typically land $6–10k under. A target monthly
-   (now that term/mileage are fixed at 36–39mo/12k) would let me flag a listing
-   as "worth calculating" before you open the Leasehackr link at all.
-2. **How hard is "at least M Sport"?** Does M Sport Pro / Dynamic Handling /
-   the 19" wheels change the ranking, or is it a pure yes/no gate? Affects
-   whether §12 #3 (window stickers) is worth building.
-3. **How hard is "black"?** Right now red and white are excluded and black is
+   on how it's optioned; a new-titled loaner under 5k miles typically lands
+   $3–6k under a from-scratch order. A target monthly (now that term/mileage
+   are fixed at 36–39mo/12k) would let me flag a listing as "worth calculating"
+   before you open the Leasehackr link at all.
+2. **How hard is "black"?** Right now red and white are excluded and black is
    *not* prioritized — everything non-red/white shows equally. If black is a
    near-requirement, I'd sort black to the top rather than just filtering. If
    it's a mild preference, leave it.
-4. **Is xDrive truly out?** RWD-only is enforced now, but in Indiana in
+3. **Is xDrive truly out?** RWD-only is enforced now, but in Indiana in
    February that's a real decision, and it roughly triples your candidate pool.
    `--include-xdrive` flips it.
-5. **Where do you want to see this?** If the answer is "on my phone at a
+4. **Where do you want to see this?** If the answer is "on my phone at a
    dealership," I'd set up option B (§10) rather than building anything.

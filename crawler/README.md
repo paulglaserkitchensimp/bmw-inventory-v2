@@ -5,11 +5,14 @@
 > upstream author's vehicles and are disabled. See
 > [`../docs/330I_DEAL_FINDER.md`](../docs/330I_DEAL_FINDER.md).
 >
-> Two flags added for this hunt: `--exclude-trim TERM` (drops a drivetrain the
-> loose trim matcher would otherwise let through — `330i` matches `330i xDrive`)
-> and `--dealer-states ST,ST` (restricts the per-dealer platforms to a region).
-> `--exclude-trim` also exists on `merge_results.py`, where it covers the
-> aggregators too.
+> Flags added for this hunt: `--exclude-trim TERM` (drops a drivetrain the
+> loose trim matcher would otherwise let through — `330i` matches `330i xDrive`),
+> `--dealer-states ST,ST` (restricts the per-dealer platforms to a region), and
+> `--type new` is enforced globally now — including against DealerInspire's
+> Cars Commerce API, which has no condition parameter of its own and used to
+> leak used inventory through. `--exclude-trim` and `--only-type` also exist on
+> `merge_results.py`, where they cover the three aggregators (which have no
+> server-side drivetrain or condition filter at all).
 
 Searches BMW inventory nationwide by querying dealer website platforms
 directly, plus three marketplace aggregators for everything else.
@@ -58,7 +61,7 @@ sources**, VIN-merges the outputs, and (with `--sync`) unions the result into
 `results.json` and refreshes the visualizer:
 
 ```bash
-./search_330i.sh --sync         # 2026 330i RWD, 0-15k mi, 750 mi of 47119
+./search_330i.sh --sync         # 2025-26 330i RWD, new only, 0-5k mi, 750 mi of 47119
 
 # Upstream sweeps — disabled in this fork; run via `bash <script>` to revive:
 ./search_all_models.sh --sync   # X5/X6/X7 M60i + XM + 760i xDrive, 2025-26
@@ -138,6 +141,7 @@ uv run search_inventory.py --analyze-only some_results.json --fetch-carfax
 | `--type` | `all` | `new`, `used`, or `all` |
 | `--exclude-trim TERM` | — | repeatable/comma-separated; drops records whose trim **or** model contains TERM. Needed because trim matching is a loose substring match (`330i` matches `330i xDrive`) |
 | `--dealer-states ST,ST` | — | restrict DealerInspire / DealerOn / Team Velocity / standalone-DDC queries to a region; the OEM Dealer.com call stays nationwide and its results are filtered afterwards |
+| `--type` | `all` | also documented above, but worth repeating here: this is now enforced as a hard post-filter against **every** dealer-platform result, closing a gap where DealerInspire's Cars Commerce API (no condition parameter) used to leak used inventory through a `--type new` run |
 | `--out` | `search_output.json` | **cannot be `results.json`** — see below |
 | `--skip-fetch` | off | skip VDP fetch (no CarFax URLs) |
 | `--fetch-carfax` | off | fetch full CarFax reports via real Chrome CDP |
@@ -315,11 +319,13 @@ uv run merge_results.py \
   --inputs results.json new_sweep.json \
   --out results.json
 
-# Drop unwanted states during the merge too
+# Drop unwanted states, drivetrains, or conditions during the merge too
 uv run merge_results.py \
   --inputs results.json autotrader_x.json cars_com_x.json \
   --out results.json \
-  --exclude-states CA
+  --exclude-states CA \
+  --exclude-trim xDrive \
+  --only-type new
 ```
 
 Besides picking a winning base record, the merger also backfills any
@@ -327,6 +333,12 @@ still-empty authoritative fields from the other sources (so you keep a
 CarFax URL from source A plus a price from source B), and swaps
 aggregator dealer URLs (`cars.com`, `edmunds.com`, …) for a real dealer
 domain when one of the other sources has it.
+
+`--exclude-trim` and `--only-type` exist specifically because the aggregator
+crawlers (Autotrader/Cars.com/TrueCar) have no server-side drivetrain or
+condition filter of their own — `search_inventory.py`'s `--exclude-trim` and
+`--type` only reach the four dealer platforms, so a merge of aggregator output
+is the one place left to enforce both.
 
 ## Dealer directory (one-time / rerun to refresh)
 

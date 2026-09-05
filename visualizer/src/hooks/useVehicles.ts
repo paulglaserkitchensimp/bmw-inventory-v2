@@ -121,6 +121,12 @@ export function applyFilters(
       if (filters.mSport === true && v.mSport === false) return false
       if (filters.mSport === false && v.mSport !== false) return false
     }
+    if (filters.isNew !== null) {
+      // v.type is always populated by every crawler source ('new' | 'used' |
+      // 'cpo') — unlike distance/mSport there's no "unknown" case to protect.
+      const isNew = (v.type ?? '').toLowerCase() === 'new'
+      if (isNew !== filters.isNew) return false
+    }
     if (filters.certified !== null && v.certified !== filters.certified) return false
     if (filters.platform && v.platform !== filters.platform) return false
     if (filters.bmwDealer !== null) {

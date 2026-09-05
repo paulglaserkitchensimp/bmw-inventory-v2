@@ -246,11 +246,22 @@ def main() -> None:
         "(e.g. --exclude-trim xDrive for a RWD-only search).",
     )
     ap.add_argument(
+        "--only-type",
+        default=None,
+        choices=["new", "used", "cpo"],
+        help="Keep only records whose `type` field matches exactly. Needed "
+        "because the aggregator crawlers (Autotrader/Cars.com/TrueCar) have no "
+        "condition filter of their own — search_inventory.py's --type covers "
+        "the four dealer platforms, but a merge of aggregator output has to "
+        "drop non-matching records here.",
+    )
+    ap.add_argument(
         "--dry-run", action="store_true", help="Print summary without writing"
     )
     args = ap.parse_args()
 
     drop_states = _parse_state_list(args.exclude_states)
+    only_type = args.only_type.lower() if args.only_type else None
     drop_trims = {
         t.strip().lower()
         for entry in args.exclude_trim
@@ -271,6 +282,7 @@ def main() -> None:
         "dropped_state": 0,
         "dropped_no_vin": 0,
         "dropped_trim": 0,
+        "dropped_type": 0,
     }
 
     for path in inputs:
@@ -290,6 +302,9 @@ def main() -> None:
                 if any(term in haystack for term in drop_trims):
                     stats["dropped_trim"] += 1
                     continue
+            if only_type and (rec.get("type") or "").lower() != only_type:
+                stats["dropped_type"] += 1
+                continue
             buckets.setdefault(vin, []).append(rec)
 
     # Merge each bucket
@@ -315,6 +330,7 @@ def main() -> None:
         f"(read {stats['total_read']}, {merged_count} merged across sources, "
         f"{stats['dropped_state']} dropped-state, "
         f"{stats['dropped_trim']} dropped-trim, "
+        f"{stats['dropped_type']} dropped-type, "
         f"{stats['dropped_no_vin']} dropped-no-vin)"
     )
 

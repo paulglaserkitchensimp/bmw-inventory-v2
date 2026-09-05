@@ -18,11 +18,14 @@ filter, sort, map, annotate, and triage dealer inventory.
 
 - **Table / Map / Split views** — toggle from the header. Dark mode toggle too.
 - **Filter panel** — full-text search (VIN, dealer, color, your notes) plus
-  faceted filters for **max distance from home**, **M Sport package**,
-  **exterior color**, state, model, trim, year, mileage, days on lot, price,
-  certified, platform, CarFax badge, and owner count.
-  `DEFAULT_FILTERS` (`src/types.ts`) ships pre-set to this fork's hunt:
-  750 miles of 47119, red and white excluded. "Reset all" restores that.
+  faceted filters for **max distance from home**, **condition** ("lease
+  eligibility": all/new/not-new, since only a car titled new can be leased as
+  new), **M Sport package**, **exterior color**, state, model, trim, year,
+  mileage, days on lot, price, certified, platform, CarFax badge, and owner
+  count. `DEFAULT_FILTERS` (`src/types.ts`) ships pre-set to this fork's hunt:
+  750 miles of 47119, condition = New, 0–5,000 miles, M Sport required, red
+  and white excluded. Every one of those is a single click to relax — "Reset
+  all" restores exactly this state.
 - **Vehicle detail panel** — opens inline on click; shows CarFax, NHTSA,
   dealer links, LLM ownership reasoning, etc.
 - **Annotations** — cycle each VIN through `interesting → shortlisted →

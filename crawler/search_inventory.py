@@ -2053,6 +2053,20 @@ def main() -> None:
     if before != len(all_results):
         print(f"\nMileage filter {args.min_miles:,}–{args.max_miles:,}: {before} → {len(all_results)} vehicles")
 
+    # Post-filter vehicle condition. DealerOn and Team Velocity already
+    # query/filter by condition, and DDC queries new/used as separate pages, so
+    # this is a no-op for them. DealerInspire's Cars Commerce API has no
+    # condition parameter and always returns both new and used together — this
+    # is the only thing that actually enforces --type new/used against DI
+    # results, and it's cheap insurance against any other source doing the
+    # same. `type` is always populated by every source's record builder (never
+    # None), so an exact match is safe.
+    if args.type != "all":
+        before = len(all_results)
+        all_results = [v for v in all_results if (v.get("type") or "").lower() == args.type]
+        if before != len(all_results):
+            print(f"\nCondition filter ({args.type}): {before} → {len(all_results)} vehicles")
+
     # Deduplicate by VIN
     seen_vins: set[str] = set()
     deduped = []
