@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
-# Regional sweep — 2026 BMW 330i (RWD), M Sport package, within ~750 mi of 47119.
+# Regional sweep — 2025-2026 BMW 330i (RWD), M Sport package, within ~750 mi of 47119.
 #
 # Target profile:
-#   • 2026 330i, rear-wheel drive (xDrive is excluded at merge time)
+#   • 2025-2026 330i (2025 leftovers welcome — none seen yet, but they carry
+#     the deepest discounts of the model cycle), rear-wheel drive (xDrive is
+#     excluded at merge time)
 #   • M Sport package or better — flagged post-hoc from the VDP text as
 #     `mSport` / `packageSignals`; filter on it in the visualizer
 #   • New OR loaner/demo/CPO, so MIN_MILES defaults to 0 (a brand-new car
 #     shows 2–30 miles and the repo's usual 60-mile floor would hide it)
 #   • Market: ~750 miles of Floyds Knobs, IN (Louisville metro)
+#   • Deal structure: 36 or 39 month lease, 12,000 mi/year — see the
+#     Leasehackr prefill buttons in the visualizer's vehicle detail panel
 #
 # Sources: Dealer.com + DealerInspire + DealerOn + Team Velocity (via
 # search_inventory.py), Autotrader, Cars.com, TrueCar. Merged by VIN into
@@ -24,15 +28,15 @@
 #   TrueCar mmt[]    : bmw_3-series  + client-side --trim 330i
 #
 # Usage:
-#   ./search_330i.sh                       # 2026, 0-15k mi, 750 mi radius
+#   ./search_330i.sh                       # 2025-2026, 0-15k mi, 750 mi radius
 #   ./search_330i.sh --sync
-#   ./search_330i.sh --year 2025-2026 --max-miles 8000 --sync
+#   ./search_330i.sh --year 2026 --max-miles 8000 --sync      # 2026-only pass
 #   ./search_330i.sh --skip-fetch --skip-vdp --headless      # fast pass
 
 set -euo pipefail
 cd "$(dirname "$0")"
 
-YEAR="2026"
+YEAR="2025-2026"
 OUT=""
 SYNC=false
 SKIP_FETCH=false
@@ -64,7 +68,7 @@ usage() {
   sed -n '2,31p' "$0" | sed 's/^# \?//'
   echo
   echo "Options:"
-  echo "  --year Y[-Y]        Model year or range (default: 2026)"
+  echo "  --year Y[-Y]        Model year or range (default: 2025-2026)"
   echo "  --sync              Union focused output into results.json + visualizer sync"
   echo "  --out FILE          Merged output path (default: 330i_{YEARS}_results.json)"
   echo "  --zip ZIP           Search origin (default: 47119)"
@@ -114,7 +118,7 @@ TC_OUT="${PREFIX}_truecar.json"
 MERGE_INPUTS=()
 
 echo "═══════════════════════════════════════════════════════════════"
-echo " Targeted search: 3 Series 330i (${YEAR})"
+echo " Targeted search: 3 Series 330i (${YEAR})   lease target: 36/39mo, 12k mi/yr"
 echo " miles: ${MIN_MILES}–${MAX_MILES}   origin: ${ZIP}   radius: ${RADIUS:-nationwide} mi"
 echo " exclude trims: ${EXCLUDE_TRIMS:-none}   exclude states: ${EXCLUDE_STATES:-none}"
 echo " output: ${OUT}"

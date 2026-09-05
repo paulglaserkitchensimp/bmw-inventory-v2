@@ -1,9 +1,10 @@
 # 2026 330i Deal Finder — customizing this fork
 
 This repo was built to hunt a low-mile 2025–26 **X7 M60i / XM / 760i**, nationwide,
-for a lease. You are hunting a **2026 330i RWD with at least the M Sport package,
-within ~750 miles of 47119, black strongly preferred, red and white excluded** —
-with a **2026 loaner** as the ideal find.
+for a lease. You are hunting a **2025–26 330i RWD with at least the M Sport
+package, within ~750 miles of 47119, black strongly preferred, red and white
+excluded**, to be leased for **36 or 39 months at 12,000 mi/year** — with a
+**2026 loaner** as the ideal find.
 
 Same machinery, different target. This document is the map: what the repo does,
 what I changed, what I disabled, what's broken, and what to build next.
@@ -18,13 +19,14 @@ what I changed, what I disabled, what's broken, and what to build next.
 
 | Attribute | Value | Where it's enforced |
 |---|---|---|
-| Year | 2026 | `search_330i.sh --year` → every source's URL |
+| Year | 2025–2026 (2025 leftover preferred if one shows up — none seen as of this writing) | `search_330i.sh --year` → every source's URL |
 | Model / trim | 3 Series, 330i | `--search "3 Series:330i"`, aggregator URL slugs |
 | Drivetrain | **RWD only** | `--exclude-trim xDrive` (new flag — see §5) |
 | Package | M Sport or better | `mSport` / `packageSignals` from VDP text (new — see §6) |
 | Condition | New **or** loaner/demo/CPO | `MIN_MILES=0`, `MAX_MILES=15000`, `--type all` |
 | Market | ≤750 mi of 47119 | `--dealer-states` + aggregator `zip`/`radius` + UI radius filter |
 | Color | black preferred; **red and white are non-starters** | UI color filter, excluded by default |
+| Deal structure | **Lease, 36 or 39 months, 12,000 mi/yr** | Leasehackr prefill buttons in the vehicle detail panel — see "Lease structure" in §5 |
 | Horizon | 3–6 months of weekly sweeps | see §11 |
 
 **The one-line version:**
@@ -62,7 +64,7 @@ cd ../crawler
 
 That hits only the dealer platforms + Cars.com listings, skips the slow VDP
 enrichment, and takes a few minutes. Look at the output: if `3 Series 330i`
-returns a plausible count (tens to low hundreds nationwide for 2026), the slugs
+returns a plausible count (tens to low hundreds nationwide across 2025–26), the slugs
 are right. If it returns 0, go to §7 (**Verify the source slugs**) before anything
 else.
 
@@ -219,6 +221,35 @@ red and white excluded. "Reset all" restores exactly that.
 geocoded yet has distance `null`, and `null` means *unknown*, not *far*. Those
 rows are kept. Otherwise the table would empty out on first load while Nominatim
 grinds through a few hundred cities at 1 request/second.
+
+### Lease structure: 36/39 months, 12,000 mi/yr
+
+You confirmed the deal structure: **lease, 36 or 39 months, 12k mi/year.**
+Every vehicle's detail panel (click a row) now has two buttons under
+"Leasehackr":
+
+```
+[ 36mo / 12k ↗ ]   [ 39mo / 12k ↗ ]
+```
+
+Each opens `calculator.leasehackr.com` in a new tab, prefilled with that
+listing's `internetPrice` as the selling price plus the term and 12,000 annual
+miles. You still fill in MSRP, money factor, and residual from the dealer
+worksheet or a rate sheet, run the calculation there, and paste the resulting
+URL back into the existing "Paste calculator.leasehackr.com URL…" field to have
+the deal (MSRP, % off, MF, term/miles) persist in the table — that round-trip
+already existed (`utils/leasehackr.ts :: parseLeasehackrUrl`); the prefill
+buttons just remove the retyping.
+
+**Why this doesn't just compute a monthly payment for you:** BMW Financial's
+money factor and residual percentage change monthly, vary by term/mileage/
+region, and are not published anywhere a crawler can reach. Guessing them would
+produce a number that looks authoritative on a car-buying decision and isn't.
+`buildLeasehackrPrefillUrl()` in `utils/leasehackr.ts` sets only what the data
+actually supports (price, term, mileage) and leaves the rate-dependent inputs
+to you and the real calculator. If BMW Financial's current MF/residual for the
+330i becomes available in a form worth hardcoding (a monthly-updated constants
+file, say), revisit this — see §12 #4.
 
 ---
 
@@ -503,11 +534,16 @@ Use the pass reasons; over 6 months you'll forget why.
 3. **Window sticker / build sheet by VIN.** (§6) The real answer to the M Sport
    question, and it would also give you MSRP — which is what you need for lease
    math, and which dealers routinely omit from used/loaner listings.
-4. **Lease math in the table.** `utils/leasehackr.ts` already parses a pasted
-   Leasehackr URL. Going the other way — computing an estimated monthly from
-   MSRP, discount, and current BMW FS money factor/residual — would let you sort
-   the whole table by *effective monthly cost* rather than by sticker. This is
-   the feature that turns a listing browser into a deal finder.
+4. **Lease math in the table.** Done halfway: the detail panel now has one-click
+   Leasehackr prefill buttons for 36mo/12k and 39mo/12k (§5, "Lease structure"),
+   so getting a real monthly quote is a click + a pasted-back URL instead of
+   retyping five numbers. What's still missing is doing that automatically for
+   *every* row so you could sort the table by *effective monthly cost* instead
+   of by sticker price — that needs MSRP (item #3) and a monthly-updated
+   MF/residual table for the 330i, and deliberately wasn't guessed (see the
+   "why this doesn't just compute a payment" note in §5). If you're willing to
+   hand-enter BMW FS's current MF/residual once a month, this becomes a couple
+   hours of work; if not, it stays a per-car manual step.
 5. **Fix bugs #7 and #8.** Ten minutes each.
 6. **Email/push on new matches.** Once cadence is automated, a "3 new cars matched
    your filter this week" summary beats opening the app on a hope.
@@ -551,28 +587,36 @@ risk that the low mileage will otherwise talk you past.
 
 ## 14. Open questions
 
+### Resolved
+
+- **Lease or buy? Term/mileage?** → **Lease, 36 or 39 months, 12,000 mi/yr.**
+  Built the Leasehackr prefill buttons (§5, "Lease structure"). Full lease-math
+  ranking (§12 #4) is still unbuilt — it needs MSRP and BMW FS's current
+  MF/residual, neither of which any crawler source provides — but the manual
+  round-trip through the real calculator is one click shorter now.
+- **Would you consider a 2025 leftover?** → **Yes, but none seen yet.**
+  `search_330i.sh --year` default widened from `2026` to `2025-2026`. If a 2025
+  never turns up in a sweep, that's the market telling you something (dealers
+  clear 2025s fast when a 2026 is one model-year away) — not a search-slug bug.
+
+### Still open
+
 These change what I'd build next, not whether the current setup works.
 
-1. **Lease or buy?** You mention Leasehackr integration exists, and the original
-   author leased. Lease math (MSRP, MF, residual) is a completely different
-   ranking function than purchase price, and #4 in §12 depends entirely on the
-   answer.
-2. **Budget ceiling / target monthly?** There's a `maxPrice` filter but no
-   default set. A 2026 330i RWD with M Sport is roughly $48–55k MSRP depending
-   on how it's optioned; loaners typically land $6–10k under. Knowing your walk-
-   away number lets me set a sane default and flag outliers.
-3. **How hard is "at least M Sport"?** Does M Sport Pro / Dynamic Handling /
+1. **Budget ceiling / target monthly?** There's a `maxPrice` filter but no
+   default set. A 2025–26 330i RWD with M Sport is roughly $48–55k MSRP depending
+   on how it's optioned; loaners typically land $6–10k under. A target monthly
+   (now that term/mileage are fixed at 36–39mo/12k) would let me flag a listing
+   as "worth calculating" before you open the Leasehackr link at all.
+2. **How hard is "at least M Sport"?** Does M Sport Pro / Dynamic Handling /
    the 19" wheels change the ranking, or is it a pure yes/no gate? Affects
    whether §12 #3 (window stickers) is worth building.
-4. **How hard is "black"?** Right now red and white are excluded and black is
+3. **How hard is "black"?** Right now red and white are excluded and black is
    *not* prioritized — everything non-red/white shows equally. If black is a
    near-requirement, I'd sort black to the top rather than just filtering. If
    it's a mild preference, leave it.
-5. **Would you consider a 2025 leftover?** New 2025s still on lots in late 2026
-   are the deepest discounts in the market by a wide margin, and `--year
-   2025-2026` is a one-word change. Your spec says 2026, so I've kept it strict.
-6. **Is xDrive truly out?** RWD-only is enforced now, but in Indiana in
+4. **Is xDrive truly out?** RWD-only is enforced now, but in Indiana in
    February that's a real decision, and it roughly triples your candidate pool.
    `--include-xdrive` flips it.
-7. **Where do you want to see this?** If the answer is "on my phone at a
+5. **Where do you want to see this?** If the answer is "on my phone at a
    dealership," I'd set up option B (§10) rather than building anything.
